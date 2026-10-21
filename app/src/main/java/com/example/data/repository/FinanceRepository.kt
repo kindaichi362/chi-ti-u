@@ -41,6 +41,11 @@ class FinanceRepository(
     val allDebts: Flow<List<Debt>> = debtDao.getAllDebts()
     val allGoals: Flow<List<Goal>> = goalDao.getAllGoals()
     val activeBills: Flow<List<RecurringBill>> = recurringBillDao.getActiveBills()
+    val archivedAccounts: Flow<List<Account>> = accountDao.getArchivedAccounts()
+
+    fun transactionsForAccount(accountId: Long): Flow<List<Transaction>> = transactionDao.getTransactionsForAccount(accountId)
+
+    suspend fun unarchiveAccount(id: Long) = accountDao.unarchiveAccountById(id)
 
     fun getBudgetsForMonth(monthYear: String): Flow<List<Budget>> =
         budgetDao.getBudgetsForMonth(monthYear)

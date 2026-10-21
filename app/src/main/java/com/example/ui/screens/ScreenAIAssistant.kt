@@ -84,11 +84,11 @@ private val SUGGESTIONS = listOf(
     "Tài sản ròng hiện tại là bao nhiêu?"
 )
 
-/** Renders the assistant's **bold** markers as bold text. */
-private fun markdownBold(text: String): AnnotatedString = buildAnnotatedString {
+/** Renders the assistant's **bold** markers as bold text in [strong]. */
+private fun markdownBold(text: String, strong: androidx.compose.ui.graphics.Color): AnnotatedString = buildAnnotatedString {
     val parts = text.split("**")
     parts.forEachIndexed { i, part ->
-        if (i % 2 == 1) withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = AppleTextPrimary)) { append(part) } else append(part)
+        if (i % 2 == 1) withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = strong)) { append(part) } else append(part)
     }
 }
 
@@ -227,10 +227,10 @@ private fun Bubble(msg: ChatMessage) {
     val mine = msg.sender == MessageSender.USER
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
         Text(
-            text = if (mine) AnnotatedString(msg.text) else markdownBold(msg.text),
+            text = if (mine) AnnotatedString(msg.text) else markdownBold(msg.text, AppleTextPrimary),
             fontSize = TextSize.sm,
             lineHeight = TextSize.sm * 1.45f,
-            color = if (mine) Color.Black else Color(0xFFE5E5EA),
+            color = if (mine) com.example.ui.theme.OnAccent else AppleTextPrimary,
             modifier = Modifier
                 .widthIn(max = 320.dp)
                 .clip(

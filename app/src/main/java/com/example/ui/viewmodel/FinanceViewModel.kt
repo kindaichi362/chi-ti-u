@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -83,18 +84,81 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         txs.filter { it.countsInReports && monthKeyOf(it.timestamp) == month }
     }.asState(emptyList())
 
+    // ---- The month the Overview and Reports tabs are looking at (0 = this month, -1 = last…) ----
+    private val _selectedMonthOffset = MutableStateFlow(0)
+    val selectedMonthOffset: StateFlow<Int> = _selectedMonthOffset.asStateFlow()
+    fun selectMonth(offset: Int) { _selectedMonthOffset.value = offset.coerceAtMost(0) }
+
+    /** "yyyy-MM" of the selected month; budgets set while viewing a month belong to that month. */
+    fun selectedMonthKey(): String = Calendar.getInstance().run {
+        set(Calendar.DAY_OF_MONTH, 1); add(Calendar.MONTH, _selectedMonthOffset.value); monthKeyOf(timeInMillis)
+    }
+
+    /** Totals, budgets and categories for the selected month. Past months are computed as of their last day. */
     val financialSnapshot: StateFlow<FinancialSnapshot> = combine(
-        combine(accounts, categories, currentMonthTransactions) { a, c, t -> Triple(a, c, t) },
-        combine(currentMonthBudgets, goals, debts) { b, g, d -> Triple(b, g, d) },
-        transactions
-    ) { (accs, cats, txs), (bdgs, gls, dbts), all ->
-        FinancialAdvisorEngine.computeSnapshot(accs, cats, txs, bdgs, gls, dbts, allTransactions = all)
+        combine(accounts, categories, transactions) { a, c, t -> Triple(a, c, t) },
+        combine(budgets, goals, debts) { b, g, d -> Triple(b, g, d) },
+        combine(_selectedMonthOffset, currentMonthKey) { off, _ -> off }
+    ) { (accs, cats, all), (bdgs, gls, dbts), offset ->
+        snapshotFor(offset, accs, cats, all, bdgs, gls, dbts)
     }.asState(FinancialAdvisorEngine.computeSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
 
-    /** Automatic findings (credit card due, budgets, pace, trends) for the home screen and assistant. */
-    val insights: StateFlow<List<Insight>> = combine(financialSnapshot, currentMonthKey) { s, _ ->
-        FinancialAdvisorEngine.insights(s)
-    }.asState(emptyList())
+    /** Always this month — the assistant talks about "now" whatever month a tab is showing. */
+    val currentSnapshot: StateFlow<FinancialSnapshot> = combine(
+        combine(accounts, categories, transactions) { a, c, t -> Triple(a, c, t) },
+        combine(budgets, goals, debts) { b, g, d -> Triple(b, g, d) },
+        currentMonthKey
+    ) { (accs, cats, all), (bdgs, gls, dbts), _ ->
+        snapshotFor(0, accs, cats, all, bdgs, gls, dbts)
+    }.asState(FinancialAdvisorEngine.computeSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
+
+    private fun snapshotFor(
+        offset: Int, accs: List<Account>, cats: List<Category>, all: List<Transaction>,
+        bdgs: List<Budget>, gls: List<Goal>, dbts: List<Debt>
+    ): FinancialSnapshot {
+        val now = if (offset == 0) System.currentTimeMillis() else Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1); add(Calendar.MONTH, offset + 1)
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            add(Calendar.MILLISECOND, -1)
+        }.timeInMillis
+        val key = monthKeyOf(now)
+        val monthTx = all.filter { it.countsInReports && monthKeyOf(it.timestamp) == key }
+        return FinancialAdvisorEngine.computeSnapshot(accs, cats, monthTx, bdgs.filter { it.monthYear == key }, gls, dbts, allTransactions = all, now = now)
+    }
+
+    /** Automatic findings (credit card due, budgets, pace, trends) for the assistant. */
+    val insights: StateFlow<List<Insight>> = currentSnapshot.map { FinancialAdvisorEngine.insights(it) }.asState(emptyList())
+
+    // ---- Preferences shared by every screen ----
+    private val prefs = application.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
+
+    private val _balancesHidden = MutableStateFlow(prefs.getBoolean("balances_hidden", false))
+    /** Hide amounts on Overview and Accounts (one switch for both). */
+    val balancesHidden: StateFlow<Boolean> = _balancesHidden.asStateFlow()
+    fun toggleBalancesHidden() {
+        _balancesHidden.value = !_balancesHidden.value
+        prefs.edit().putBoolean("balances_hidden", _balancesHidden.value).apply()
+    }
+
+    private val _themeMode = MutableStateFlow(ThemeMode.entries.firstOrNull { it.name == prefs.getString("theme_mode", null) } ?: ThemeMode.SYSTEM)
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+    fun setThemeMode(mode: ThemeMode) {
+        _themeMode.value = mode
+        prefs.edit().putString("theme_mode", mode.name).apply()
+    }
+
+    // ---- Transactions tab filters, kept here so they survive switching tabs ----
+    data class TxFilter(val query: String = "", val type: TransactionType? = null, val monthOffset: Int? = 0, val accountId: Long? = null) {
+        val isDefault: Boolean get() = query.isBlank() && type == null && monthOffset == 0 && accountId == null
+    }
+    private val _txFilter = MutableStateFlow(TxFilter())
+    val txFilter: StateFlow<TxFilter> = _txFilter.asStateFlow()
+    fun updateTxFilter(transform: (TxFilter) -> TxFilter) { _txFilter.value = transform(_txFilter.value) }
+
+    // ---- Accounts ----
+    val archivedAccounts: StateFlow<List<Account>> = repository.archivedAccounts.asState(emptyList())
+    fun unarchiveAccount(id: Long) { viewModelScope.launch { repository.unarchiveAccount(id) } }
+    fun transactionsForAccount(accountId: Long): Flow<List<Transaction>> = repository.transactionsForAccount(accountId)
 
     /** Pays [amount] of a credit card's debt from another account (a transfer, not spending). */
     fun payCreditCard(cardId: Long, fromAccountId: Long, amount: Double) {
@@ -285,7 +349,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     fun addBudget(categoryId: Long, amountLimit: Double) {
         viewModelScope.launch {
-            repository.upsertBudget(categoryId, amountLimit, currentMonthKey.value)
+            repository.upsertBudget(categoryId, amountLimit, selectedMonthKey())
         }
     }
 
@@ -355,10 +419,12 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun askAiAssistant(query: String): String {
-        return FinancialAdvisorEngine.answerQuery(query, financialSnapshot.value)
+        return FinancialAdvisorEngine.answerQuery(query, currentSnapshot.value)
     }
 
     companion object {
         fun monthKeyOf(timestamp: Long): String = SimpleDateFormat("yyyy-MM", Locale.US).format(Date(timestamp))
     }
 }
+
+enum class ThemeMode(val label: String) { SYSTEM("Theo hệ thống"), LIGHT("Sáng"), DARK("Tối") }

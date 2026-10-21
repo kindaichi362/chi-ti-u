@@ -267,7 +267,7 @@ fun ScreenCategories(
                                     .padding(start = if (cat.parentId != null) Space.xxl else 0.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                IconTile(parseColorSafe(cat.colorHex), emoji = cat.emoji ?: "🏷️", size = 36.dp)
+                                com.example.ui.components.CategoryTile(cat, size = 36.dp)
                                 Spacer(Modifier.width(Space.md))
                                 Column(Modifier.weight(1f)) {
                                     Text(cat.name, fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = AppleTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -403,7 +403,7 @@ fun ScreenCategories(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = AppleOrange)
                     ) {
-                        Text("Lưu", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text("Lưu", color = com.example.ui.theme.OnAccent, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {

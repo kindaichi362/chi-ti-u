@@ -73,7 +73,8 @@ fun BankLogoBadge(
             modifier = modifier
                 .size(width = size * 1.5f, height = size)
                 .clip(shape)
-                .background(Color.White),
+                .background(Color.White)
+                .border(1.dp, com.example.ui.theme.AppPalette.border, shape),
             contentAlignment = Alignment.Center
         ) {
             Image(
@@ -130,15 +131,14 @@ fun AccountTypeBadge(
     size: Dp = 32.dp,
     modifier: Modifier = Modifier
 ) {
-    val (tint, icon) = accountTypeVisual(type)
-    Box(
-        modifier = modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(tint.copy(alpha = 0.16f))
-            .border(1.dp, tint.copy(alpha = 0.3f), CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(imageVector = icon, contentDescription = type.displayName, tint = tint, modifier = Modifier.size(size * 0.55f))
-    }
+    // One quiet style for every type, matching the category tiles; the icon tells the type apart.
+    val (_, icon) = accountTypeVisual(type)
+    IconTile(
+        icon = icon,
+        tint = com.example.ui.theme.AppPalette.accent,
+        background = com.example.ui.theme.AppPalette.accentSoft,
+        modifier = modifier,
+        size = size,
+        shape = RoundedCornerShape(if (size < 28.dp) 6.dp else 10.dp)
+    )
 }

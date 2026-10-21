@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,116 +19,226 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.ReportProblem
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Tune
 import com.example.ai.FinancialAdvisorEngine
 import com.example.ai.Insight
 import com.example.ai.InsightTone
 import com.example.data.model.Account
 import com.example.data.model.Category
+import com.example.data.model.CategoryType
 import com.example.data.model.PaymentStatus
 import com.example.data.model.Transaction
 import com.example.data.model.TransactionType
 import com.example.data.repository.FinanceRepository
-import com.example.ui.theme.AppleSurface1
-import com.example.ui.theme.AppleSurface2
-import com.example.ui.theme.AppleSurface3
-import com.example.ui.theme.AppleTextPrimary
-import com.example.ui.theme.AppleTextSecondary
-import com.example.ui.theme.AppleTextTertiary
+import com.example.ui.theme.AppPalette
+import com.example.ui.theme.MoneyStyle
 import com.example.ui.theme.Radius
 import com.example.ui.theme.Space
 import com.example.ui.theme.TextSize
-import com.example.ui.theme.Tone
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-/** The one card style of the app: flat surface, hairline border, no shadow. */
+// ---------------------------------------------------------------------------------------------
+// Containers
+// ---------------------------------------------------------------------------------------------
+
+/** The one card style: white (or charcoal) surface, hairline border, no shadow. */
 @Composable
 fun AppCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    borderColor: Color = Tone.hairline,
     contentPadding: Dp = Space.lg,
+    color: Color = AppPalette.card,
+    borderColor: Color = AppPalette.border,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val base = modifier
-        .fillMaxWidth()
-        .clip(Radius.lg)
-        .background(AppleSurface1)
-        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-    Surface(
-        modifier = base,
-        color = Color.Transparent,
-        shape = Radius.lg,
-        border = BorderStroke(1.dp, borderColor)
-    ) {
-        Column(modifier = Modifier.padding(contentPadding), content = content)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(Radius.lg)
+            .background(color)
+            .border(1.dp, borderColor, Radius.lg)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(contentPadding),
+        content = content
+    )
+}
+
+/** Deep-teal summary card at the top of a tab. Content colour defaults to white-on-teal. */
+@Composable
+fun HeroCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+    val p = AppPalette
+    CompositionLocalProvider(LocalContentColor provides p.onHero) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .clip(Radius.xl)
+                .background(p.hero)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .padding(Space.xl),
+            content = content
+        )
     }
 }
 
-/** Block title with an optional text action on the right ("Xem tất cả"). */
+/** Block title with an optional action link on the right ("Xem tất cả →"). */
 @Composable
 fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? = null, onAction: (() -> Unit)? = null) {
     Row(
-        modifier = modifier.fillMaxWidth().heightIn(min = 32.dp),
+        modifier = modifier.fillMaxWidth().heightIn(min = 36.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(title, fontSize = TextSize.lg, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary, modifier = Modifier.weight(1f))
+        Text(title, fontSize = TextSize.lg, fontWeight = FontWeight.SemiBold, color = AppPalette.textPrimary, modifier = Modifier.weight(1f))
         if (action != null && onAction != null) {
-            Text(
-                text = action,
-                fontSize = TextSize.sm,
-                fontWeight = FontWeight.Medium,
-                color = Tone.accent,
-                modifier = Modifier.clip(Radius.sm).clickable(onClick = onAction).padding(vertical = Space.xs, horizontal = Space.xs)
-            )
+            Row(
+                modifier = Modifier
+                    .clip(Radius.sm)
+                    .clickable(onClick = onAction)
+                    .heightIn(min = Space.touch)
+                    .padding(horizontal = Space.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(action, fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = AppPalette.accent)
+                Spacer(Modifier.width(Space.xs))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = AppPalette.accent, modifier = Modifier.size(16.dp))
+            }
         }
     }
 }
 
-/** Small uppercase-free label above a figure. */
+/** Small label above a figure. */
 @Composable
-fun Label(text: String, modifier: Modifier = Modifier, color: Color = AppleTextSecondary) {
+fun Label(text: String, modifier: Modifier = Modifier, color: Color = AppPalette.textSecondary) {
     Text(text, fontSize = TextSize.xs, color = color, modifier = modifier, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
-/** Colour for a usage ratio: green under 70%, amber to 90%, orange to 100%, red above. */
-fun thresholdColor(ratio: Double): Color = when {
-    ratio > 1.0 -> Tone.danger
-    ratio >= 0.9 -> Color(0xFFFF6B35)
-    ratio >= 0.7 -> Color(0xFFFFD60A)
-    else -> Tone.ok
+@Composable
+fun RowDivider(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().height(1.dp).background(AppPalette.borderSubtle))
+}
+
+// ---------------------------------------------------------------------------------------------
+// Money
+// ---------------------------------------------------------------------------------------------
+
+/** An amount: tabular digits, never wraps between the number and "₫". */
+@Composable
+fun MoneyText(
+    text: String,
+    modifier: Modifier = Modifier,
+    fontSize: TextUnit = TextSize.sm,
+    color: Color = AppPalette.textPrimary,
+    fontWeight: FontWeight = FontWeight.SemiBold,
+    textDecoration: TextDecoration? = null,
+    textAlign: TextAlign? = null
+) {
+    Text(
+        text = text,
+        style = MoneyStyle,
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        color = color,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+        textDecoration = textDecoration,
+        textAlign = textAlign,
+        modifier = modifier
+    )
+}
+
+/** Big figure that steps down in size for long numbers, so billions still fit on a 360 dp phone. */
+@Composable
+fun HeroMoney(text: String, modifier: Modifier = Modifier, color: Color = LocalContentColor.current, base: TextUnit = TextSize.hero) {
+    val size = when {
+        text.length <= 13 -> base
+        text.length <= 16 -> (base.value * 0.85f).sp
+        else -> (base.value * 0.72f).sp
+    }
+    MoneyText(text, modifier = modifier, fontSize = size, color = color, fontWeight = FontWeight.Bold)
+}
+
+/** "1,2 tr", "350k" — for tight spots; spaces are no-break. */
+fun compactVnd(amount: Double): String = FinancialAdvisorEngine.compact(amount).replace(" ", NBSP).replace("-", MINUS)
+
+/** Expense in − red, income in + green, transfers neutral without sign. */
+fun signedAmountText(tx: Transaction): String = when (tx.type) {
+    TransactionType.EXPENSE -> MINUS + formatVnd(tx.amount)
+    TransactionType.INCOME -> "+" + formatVnd(tx.amount)
+    TransactionType.TRANSFER -> formatVnd(tx.amount)
+    TransactionType.ADJUSTMENT -> FinanceRepository.adjustmentDelta(tx).let { (if (it > 0) "+" else "") + formatVnd(it) }
 }
 
 @Composable
-fun ThresholdBar(ratio: Double, modifier: Modifier = Modifier, height: Dp = 6.dp, color: Color = thresholdColor(ratio)) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height)
-            .clip(CircleShape)
-            .background(AppleSurface3)
-    ) {
+fun amountColor(tx: Transaction): Color = when (tx.type) {
+    TransactionType.EXPENSE -> AppPalette.expense
+    TransactionType.INCOME -> AppPalette.income
+    else -> AppPalette.textPrimary
+}
+
+// ---------------------------------------------------------------------------------------------
+// Progress
+// ---------------------------------------------------------------------------------------------
+
+/** Budget usage colour: accent while healthy, amber from 80%, red when over. */
+@Composable
+fun thresholdColor(ratio: Double): Color = when {
+    ratio > 1.0 -> AppPalette.danger
+    ratio >= 0.8 -> AppPalette.warning
+    else -> AppPalette.accent
+}
+
+@Composable
+fun ThresholdBar(
+    ratio: Double,
+    modifier: Modifier = Modifier,
+    height: Dp = 6.dp,
+    color: Color = thresholdColor(ratio),
+    trackColor: Color = AppPalette.surface3
+) {
+    Box(modifier = modifier.fillMaxWidth().height(height).clip(CircleShape).background(trackColor)) {
         Box(
-            modifier = Modifier
+            Modifier
                 .fillMaxWidth(ratio.coerceIn(0.0, 1.0).toFloat())
                 .height(height)
                 .clip(CircleShape)
@@ -136,50 +247,199 @@ fun ThresholdBar(ratio: Double, modifier: Modifier = Modifier, height: Dp = 6.dp
     }
 }
 
-/** Two- or three-way switch, used for tabs inside a screen. */
+// ---------------------------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------------------------
+
+/** Segmented switch; the selected segment is filled with the accent. */
 @Composable
 fun SegmentedTabs(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val p = AppPalette
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(Radius.md)
-            .background(AppleSurface2)
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
+        modifier = modifier.fillMaxWidth().clip(Radius.md).background(p.surface2).padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         options.forEachIndexed { i, label ->
             val on = i == selected
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(36.dp)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(if (on) AppleSurface3 else Color.Transparent)
-                    .clickable { onSelect(i) },
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (on) p.accent else Color.Transparent)
+                    .clickable(role = Role.Tab) { onSelect(i) },
                 contentAlignment = Alignment.Center
             ) {
-                Text(label, fontSize = TextSize.sm, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (on) AppleTextPrimary else AppleTextSecondary)
+                Text(label, fontSize = TextSize.sm, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (on) p.onAccent else p.textSecondary, maxLines = 1)
             }
         }
     }
 }
 
-/** Round tile with an emoji (categories) or an icon (actions). */
+/** Pill chip for filters; filled with the accent when selected. */
 @Composable
-fun IconTile(color: Color, modifier: Modifier = Modifier, size: Dp = 40.dp, emoji: String? = null, icon: ImageVector? = null) {
-    Box(
-        modifier = modifier.size(size).clip(CircleShape).background(color.copy(alpha = 0.16f)),
-        contentAlignment = Alignment.Center
+fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, leading: (@Composable () -> Unit)? = null) {
+    val p = AppPalette
+    Row(
+        modifier = modifier
+            .heightIn(min = 40.dp)
+            .clip(Radius.pill)
+            .background(if (selected) p.accent else p.surface2)
+            .clickable(role = Role.Checkbox, onClick = onClick)
+            .padding(horizontal = Space.lg),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        when {
-            !emoji.isNullOrBlank() -> Text(emoji, fontSize = (size.value * 0.45f).sp)
-            icon != null -> Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(size * 0.5f))
+        if (leading != null) {
+            leading()
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(label, fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = if (selected) p.onAccent else p.textPrimary, maxLines = 1)
+    }
+}
+
+@Composable
+fun PrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: ImageVector? = null
+) {
+    val p = AppPalette
+    Row(
+        modifier = modifier
+            .heightIn(min = 48.dp)
+            .clip(Radius.md)
+            .background(if (enabled) p.accent else p.surface3)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = Space.xl),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        val c = if (enabled) p.onAccent else p.textTertiary
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = c, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(Space.sm))
+        }
+        Text(text, fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = c, maxLines = 1)
+    }
+}
+
+@Composable
+fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+    val p = AppPalette
+    Row(
+        modifier = modifier
+            .heightIn(min = 48.dp)
+            .clip(Radius.md)
+            .background(p.card)
+            .border(1.dp, p.border, Radius.md)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = Space.lg),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = p.accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(Space.sm))
+        }
+        Text(text, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = p.textPrimary, maxLines = 1)
+    }
+}
+
+/** Rounded-square icon on a soft background (categories, actions, account types). */
+@Composable
+fun IconTile(
+    icon: ImageVector,
+    tint: Color,
+    background: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 40.dp,
+    shape: Shape = RoundedCornerShape(12.dp)
+) {
+    Box(modifier = modifier.size(size).clip(shape).background(background), contentAlignment = Alignment.Center) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.5f))
+    }
+}
+
+/** Category icon tile: expense on blush, income on mint, coloured by meaning (not per category). */
+@Composable
+fun CategoryTile(category: Category?, modifier: Modifier = Modifier, size: Dp = 40.dp, type: CategoryType? = category?.type) {
+    val p = AppPalette
+    val income = type == CategoryType.INCOME
+    IconTile(
+        icon = categoryIcon(category),
+        tint = if (income) p.income else p.expense,
+        background = if (income) p.accentSoft else p.expenseSoft,
+        modifier = modifier,
+        size = size
+    )
+}
+
+/** Month picker pill ("Tháng 10, 2026 ▾"); offers the last [monthsBack] months. */
+@Composable
+fun MonthPill(selectedOffset: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier, monthsBack: Int = 12) {
+    val p = AppPalette
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Row(
+            modifier = Modifier
+                .heightIn(min = 36.dp)
+                .clip(Radius.md)
+                .background(p.card)
+                .border(1.dp, p.border, Radius.md)
+                .clickable(role = Role.DropdownList) { open = true }
+                .padding(horizontal = Space.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(monthLabel(selectedOffset), fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = p.textPrimary, maxLines = 1)
+            Spacer(Modifier.width(Space.xs))
+            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Chọn tháng", tint = p.textSecondary, modifier = Modifier.size(18.dp))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = p.card) {
+            for (offset in 0 downTo -monthsBack + 1) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            monthLabel(offset) + if (offset == 0) " (tháng này)" else "",
+                            fontWeight = if (offset == selectedOffset) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (offset == selectedOffset) p.accent else p.textPrimary
+                        )
+                    },
+                    onClick = { onSelect(offset); open = false }
+                )
+            }
         }
     }
 }
 
-/** A list row: leading tile, two lines of text, trailing value, optional chevron. */
+/** "‹ Tháng 10, 2026 ›" stepper; the next arrow stops at the current month. */
+@Composable
+fun MonthStepper(selectedOffset: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val p = AppPalette
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { onSelect(selectedOffset - 1) }) {
+            Icon(Icons.Default.ChevronLeft, contentDescription = "Tháng trước", tint = p.textPrimary)
+        }
+        Text(monthLabel(selectedOffset), fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = p.textPrimary,
+            textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+        IconButton(onClick = { onSelect(selectedOffset + 1) }, enabled = selectedOffset < 0) {
+            Icon(Icons.Default.ChevronRight, contentDescription = "Tháng sau", tint = if (selectedOffset < 0) p.textPrimary else p.textTertiary.copy(alpha = 0.4f))
+        }
+    }
+}
+
+fun monthLabel(offset: Int): String {
+    val c = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1); add(Calendar.MONTH, offset) }
+    return "Tháng ${c.get(Calendar.MONTH) + 1}, ${c.get(Calendar.YEAR)}"
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rows
+// ---------------------------------------------------------------------------------------------
+
+/** A list row: leading tile, title + subtitle, trailing value, optional chevron. Min 56 dp tall. */
 @Composable
 fun ListRow(
     title: String,
@@ -190,11 +450,13 @@ fun ListRow(
     showChevron: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
+    val p = AppPalette
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 56.dp)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(vertical = Space.md),
+            .padding(vertical = Space.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (leading != null) {
@@ -202,10 +464,10 @@ fun ListRow(
             Spacer(Modifier.width(Space.md))
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = AppleTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, fontSize = TextSize.base, fontWeight = FontWeight.Medium, color = p.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (!subtitle.isNullOrBlank()) {
                 Spacer(Modifier.height(2.dp))
-                Text(subtitle, fontSize = TextSize.xs, color = AppleTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, fontSize = TextSize.xs, color = p.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         if (trailing != null) {
@@ -213,28 +475,21 @@ fun ListRow(
             trailing()
         }
         if (showChevron) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AppleTextTertiary, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(Space.xs))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = p.textTertiary, modifier = Modifier.size(20.dp))
         }
     }
 }
 
-fun signedAmountText(tx: Transaction): String = when (tx.type) {
-    TransactionType.EXPENSE -> "-" + formatVnd(tx.amount)
-    TransactionType.INCOME -> "+" + formatVnd(tx.amount)
-    TransactionType.TRANSFER -> formatVnd(tx.amount)
-    TransactionType.ADJUSTMENT -> FinanceRepository.adjustmentDelta(tx).let { (if (it > 0) "+" else "") + formatVnd(it) }
-}
-
-fun amountColor(tx: Transaction): Color = when (tx.type) {
-    TransactionType.EXPENSE -> AppleTextPrimary
-    TransactionType.INCOME -> Tone.income
-    TransactionType.TRANSFER -> AppleTextSecondary
-    TransactionType.ADJUSTMENT -> AppleTextSecondary
+private fun isToday(ts: Long): Boolean {
+    val a = Calendar.getInstance()
+    val b = Calendar.getInstance().apply { timeInMillis = ts }
+    return a.get(Calendar.YEAR) == b.get(Calendar.YEAR) && a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
 }
 
 /**
- * One transaction in any list. Expenses are white (the normal case), income green, transfers grey —
- * colour carries meaning instead of painting every amount red.
+ * One transaction in any list: category tile, name, "time · account" (date too when it is not
+ * today, unless the list is already grouped by day), signed amount on the right.
  */
 @Composable
 fun TransactionRow(
@@ -245,14 +500,16 @@ fun TransactionRow(
     showDate: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
-    val title = when {
-        tx.type == TransactionType.TRANSFER -> if (destination != null) "${account?.name ?: "?"} → ${destination.name}" else tx.note.ifBlank { "Chuyển tiền" }
-        tx.type == TransactionType.ADJUSTMENT -> "Điều chỉnh số dư"
-        else -> category?.name ?: "Chưa phân loại"
+    val p = AppPalette
+    val title = when (tx.type) {
+        TransactionType.TRANSFER -> if (destination != null) "${account?.name ?: "?"} → ${destination.name}" else tx.note.ifBlank { "Chuyển tiền" }
+        TransactionType.ADJUSTMENT -> "Đối soát số dư"
+        else -> category?.name ?: tx.note.ifBlank { "Chưa phân loại" }
     }
-    val time = SimpleDateFormat(if (showDate) "dd/MM HH:mm" else "HH:mm", Locale.getDefault()).format(Date(tx.timestamp))
-    val note = tx.note.takeIf { it.isNotBlank() && it != title && tx.type != TransactionType.TRANSFER }
-    val subtitle = listOfNotNull(note, account?.name?.takeIf { tx.type != TransactionType.TRANSFER }, time).joinToString(" · ")
+    val time = SimpleDateFormat(if (showDate && !isToday(tx.timestamp)) "dd/MM/yyyy · HH:mm" else "HH:mm", Locale.getDefault()).format(Date(tx.timestamp))
+    // Adjustments carry an automatic reason as note; it adds nothing next to the title.
+    val note = tx.note.takeIf { it.isNotBlank() && it != title && tx.type != TransactionType.TRANSFER && tx.type != TransactionType.ADJUSTMENT }
+    val subtitle = listOfNotNull(time, account?.name?.takeIf { tx.type != TransactionType.TRANSFER }, note).joinToString(" · ")
     val cancelled = tx.paymentStatus == PaymentStatus.CANCELLED
 
     ListRow(
@@ -261,23 +518,21 @@ fun TransactionRow(
         onClick = onClick,
         leading = {
             when (tx.type) {
-                TransactionType.TRANSFER -> IconTile(Tone.transfer, icon = Icons.Default.SwapHoriz)
-                TransactionType.ADJUSTMENT -> IconTile(AppleTextSecondary, icon = Icons.Default.Tune)
-                else -> IconTile(parseColorSafe(category?.colorHex ?: "#8E8E93"), emoji = category?.emoji ?: "🏷️")
+                TransactionType.TRANSFER -> IconTile(Icons.Outlined.SwapHoriz, p.transfer, p.surface2)
+                TransactionType.ADJUSTMENT -> IconTile(Icons.Outlined.Tune, p.textSecondary, p.surface2)
+                else -> CategoryTile(category, type = if (tx.type == TransactionType.INCOME) CategoryType.INCOME else CategoryType.EXPENSE)
             }
         },
         trailing = {
             Column(horizontalAlignment = Alignment.End) {
-                Text(
+                MoneyText(
                     signedAmountText(tx),
-                    fontSize = TextSize.sm,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (cancelled) AppleTextTertiary else amountColor(tx),
+                    color = if (cancelled) p.textTertiary else amountColor(tx),
                     textDecoration = if (cancelled) TextDecoration.LineThrough else null
                 )
                 when (tx.paymentStatus) {
-                    PaymentStatus.PENDING_PAYMENT -> Text("Chờ QR", fontSize = TextSize.xs, color = Tone.warning, fontWeight = FontWeight.Medium)
-                    PaymentStatus.CANCELLED -> Text("Đã hủy", fontSize = TextSize.xs, color = AppleTextTertiary)
+                    PaymentStatus.PENDING_PAYMENT -> Text("Chờ xác nhận QR", fontSize = TextSize.xs, color = p.warning, fontWeight = FontWeight.Medium)
+                    PaymentStatus.CANCELLED -> Text("Đã hủy", fontSize = TextSize.xs, color = p.textTertiary)
                     else -> {}
                 }
             }
@@ -285,60 +540,92 @@ fun TransactionRow(
     )
 }
 
+// ---------------------------------------------------------------------------------------------
+// Feedback
+// ---------------------------------------------------------------------------------------------
+
+@Composable
 fun toneColor(tone: InsightTone): Color = when (tone) {
-    InsightTone.GOOD -> Tone.ok
-    InsightTone.INFO -> Tone.transfer
-    InsightTone.WARNING -> Tone.warning
-    InsightTone.DANGER -> Tone.danger
+    InsightTone.GOOD -> AppPalette.income
+    InsightTone.INFO -> AppPalette.transfer
+    InsightTone.WARNING -> AppPalette.warning
+    InsightTone.DANGER -> AppPalette.danger
+}
+
+fun toneIcon(tone: InsightTone): ImageVector = when (tone) {
+    InsightTone.GOOD -> Icons.Outlined.CheckCircle
+    InsightTone.INFO -> Icons.Outlined.Info
+    InsightTone.WARNING -> Icons.Outlined.WarningAmber
+    InsightTone.DANGER -> Icons.Outlined.ReportProblem
 }
 
 /** An automatic finding from the assistant; tapping asks the assistant about it. */
 @Composable
 fun InsightCard(insight: Insight, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = toneColor(insight.tone)
-    AppCard(modifier = modifier, onClick = onClick, borderColor = c.copy(alpha = 0.35f), contentPadding = Space.md + Space.xs) {
+    AppCard(modifier = modifier, onClick = onClick, contentPadding = Space.lg) {
         Row(verticalAlignment = Alignment.Top) {
-            Text(insight.emoji, fontSize = TextSize.lg)
-            Spacer(Modifier.width(Space.sm))
+            IconTile(toneIcon(insight.tone), tint = c, background = c.copy(alpha = 0.12f), size = 32.dp, shape = RoundedCornerShape(10.dp))
+            Spacer(Modifier.width(Space.md))
             Column {
-                Text(insight.title, fontSize = TextSize.sm, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(insight.title, fontSize = TextSize.sm, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold, color = AppPalette.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(Space.xs))
-                Text(insight.body, fontSize = TextSize.xs, lineHeight = 17.sp, color = AppleTextSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Text(insight.body, fontSize = TextSize.xs, lineHeight = 17.sp, color = AppPalette.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         }
     }
 }
 
-/** Empty list: one sentence of what goes here and the action that fills it. */
+/** Empty list: one line of what goes here and the action that fills it. */
 @Composable
-fun EmptyState(title: String, body: String, modifier: Modifier = Modifier, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
+fun EmptyState(
+    title: String,
+    body: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    val p = AppPalette
     Column(
         modifier = modifier.fillMaxWidth().padding(vertical = Space.xxl, horizontal = Space.lg),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(title, fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary)
+        if (icon != null) {
+            IconTile(icon, tint = p.textSecondary, background = p.surface2, size = 48.dp, shape = CircleShape)
+            Spacer(Modifier.height(Space.md))
+        }
+        Text(title, fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = p.textPrimary, textAlign = TextAlign.Center)
         Spacer(Modifier.height(Space.xs))
-        Text(body, fontSize = TextSize.sm, color = AppleTextSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Text(body, fontSize = TextSize.sm, color = p.textSecondary, textAlign = TextAlign.Center)
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(Space.lg))
-            Box(
-                modifier = Modifier
-                    .clip(Radius.md)
-                    .background(Tone.accent)
-                    .clickable(onClick = onAction)
-                    .padding(horizontal = Space.xl, vertical = Space.md)
-            ) {
-                Text(actionLabel, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = Color.Black)
-            }
+            Text(
+                actionLabel,
+                fontSize = TextSize.sm,
+                fontWeight = FontWeight.SemiBold,
+                color = p.accent,
+                modifier = Modifier.clip(Radius.md).clickable(onClick = onAction).heightIn(min = Space.touch).padding(horizontal = Space.md, vertical = Space.md)
+            )
         }
     }
 }
 
-/** Compact money for tight spots: "1,2 tr", "350k". */
-fun compactVnd(amount: Double): String = FinancialAdvisorEngine.compact(amount)
-
-/** Thin divider between rows inside a card. */
+/** Big two-up action button used under hero cards ("Chuyển tiền", "Đối soát số dư"). */
 @Composable
-fun RowDivider() {
-    Box(Modifier.fillMaxWidth().height(1.dp).background(Tone.hairline))
+fun ActionTile(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val p = AppPalette
+    Surface(
+        onClick = onClick,
+        shape = Radius.lg,
+        color = p.card,
+        border = BorderStroke(1.dp, p.border),
+        modifier = modifier.heightIn(min = 56.dp)
+    ) {
+        Row(modifier = Modifier.padding(horizontal = Space.lg, vertical = Space.md), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            Icon(icon, contentDescription = null, tint = p.accent, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(Space.sm))
+            Text(label, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = p.textPrimary, maxLines = 1)
+        }
+    }
 }

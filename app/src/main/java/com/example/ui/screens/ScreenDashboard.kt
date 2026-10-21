@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,71 +11,63 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.EventNote
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.EventNote
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.ai.FinancialAdvisorEngine
 import com.example.data.model.AccountType
-import com.example.data.model.PaymentStatus
 import com.example.ui.components.AccountLogo
 import com.example.ui.components.AppCard
+import com.example.ui.components.EmptyState
+import com.example.ui.components.HeroCard
+import com.example.ui.components.HeroMoney
 import com.example.ui.components.IconTile
-import com.example.ui.components.InsightCard
-import com.example.ui.components.Label
 import com.example.ui.components.ListRow
+import com.example.ui.components.MoneyText
+import com.example.ui.components.MonthPill
 import com.example.ui.components.RowDivider
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.ThresholdBar
 import com.example.ui.components.TransactionRow
-import com.example.ui.components.compactVnd
 import com.example.ui.components.formatVnd
-import com.example.ui.components.thresholdColor
-import com.example.ui.theme.AppleSurface2
-import com.example.ui.theme.AppleTextPrimary
-import com.example.ui.theme.AppleTextSecondary
-import com.example.ui.theme.OledBlack
+import com.example.ui.theme.AppPalette
 import com.example.ui.theme.Radius
 import com.example.ui.theme.Space
 import com.example.ui.theme.TextSize
-import com.example.ui.theme.Tone
 import com.example.ui.viewmodel.FinanceViewModel
-import java.util.Calendar
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
-private const val HIDDEN = "••••••"
+const val HIDDEN_AMOUNT = "•••••• ₫"
 
 /**
- * Home: answers "is this month OK?" first (what is left to spend), then what needs attention
- * (cards due, bills, pending QR), then where the money is, then the latest entries.
+ * Overview, in this order: header · budget (or total balance) card · income/expense this month ·
+ * net worth with accounts · recent transactions · shortcut to debts, goals and bills.
+ * Everything reflects the month chosen in the header.
  */
 @Composable
 fun ScreenDashboard(
@@ -82,234 +75,171 @@ fun ScreenDashboard(
     onNavigateToTransactions: () -> Unit,
     onNavigateToAddTransaction: () -> Unit,
     onNavigateToAccounts: () -> Unit,
+    onOpenAccount: (Long) -> Unit,
     onNavigateToBudgets: () -> Unit,
     onNavigateToAiAssistant: (String?) -> Unit,
-    onNavigateToPlans: () -> Unit = {},
+    onNavigateToPlans: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val p = AppPalette
     val snapshot by viewModel.financialSnapshot.collectAsState()
-    val insights by viewModel.insights.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
     val bills by viewModel.bills.collectAsState()
-    var visible by rememberSaveable { mutableStateOf(true) }
-    fun money(v: Double) = if (visible) formatVnd(v) else HIDDEN
+    val debts by viewModel.debts.collectAsState()
+    val hidden by viewModel.balancesHidden.collectAsState()
+    val monthOffset by viewModel.selectedMonthOffset.collectAsState()
+    fun money(v: Double) = if (hidden) HIDDEN_AMOUNT else formatVnd(v)
 
     val categoryById = remember(categories) { categories.associateBy { it.id } }
     val accountById = remember(accounts) { accounts.associateBy { it.id } }
-    val pendingQr = remember(transactions) { transactions.filter { it.paymentStatus == PaymentStatus.PENDING_PAYMENT } }
-    val now = System.currentTimeMillis()
-    val billsDueSoon = remember(bills) { bills.filter { it.nextDueDate - now <= 7 * 86_400_000L } }
-    val cardsDueSoon = snapshot.creditCards.filter { it.debt > 0 && (it.daysToDue ?: 99) <= 7 }
-    val monthLabel = remember { Calendar.getInstance().let { "Tháng ${it.get(Calendar.MONTH) + 1}, ${it.get(Calendar.YEAR)}" } }
 
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(OledBlack),
-        contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.lg, bottom = Space.xxl),
+        modifier = modifier.fillMaxSize().background(p.background),
+        contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.md, bottom = Space.xxl),
         verticalArrangement = Arrangement.spacedBy(Space.lg)
     ) {
-        // 1. Header
+        // A. Header
         item {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Box(Modifier.size(40.dp).clip(CircleShape).background(p.accentSoft), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Outlined.Person, contentDescription = "Tài khoản của bạn", tint = p.accent, modifier = Modifier.size(22.dp))
+                }
+                Spacer(Modifier.width(Space.md))
+                Text("Tổng quan", fontSize = TextSize.xl, fontWeight = FontWeight.Bold, color = p.textPrimary, modifier = Modifier.weight(1f), maxLines = 1)
+                IconButton(onClick = { viewModel.toggleBalancesHidden() }) {
+                    Icon(if (hidden) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        contentDescription = if (hidden) "Hiện số dư" else "Ẩn số dư", tint = p.textSecondary)
+                }
+            }
+            Spacer(Modifier.height(Space.sm))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Label(monthLabel)
-                    Text("Tổng quan", fontSize = TextSize.xl, fontWeight = FontWeight.Bold, color = AppleTextPrimary)
-                }
-                IconButton(onClick = { visible = !visible }) {
-                    Icon(
-                        if (visible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = if (visible) "Ẩn số dư" else "Hiện số dư",
-                        tint = AppleTextSecondary
-                    )
-                }
+                MonthPill(selectedOffset = monthOffset, onSelect = viewModel::selectMonth)
+                Spacer(Modifier.weight(1f))
                 Row(
                     modifier = Modifier
-                        .clip(Radius.xl)
-                        .background(AppleSurface2)
+                        .clip(Radius.md)
+                        .background(p.accentSoft)
                         .clickable { onNavigateToAiAssistant(null) }
-                        .padding(horizontal = Space.md, vertical = Space.sm)
+                        .heightIn(min = 36.dp)
+                        .padding(horizontal = Space.md)
                         .testTag("ai_assistant_button"),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Tone.accent, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = p.accent, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Hỏi AI", fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary)
+                    Text("Hỏi AI", fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = p.accent)
                 }
             }
         }
 
-        // 2. Hero: what is left to spend this month (or what was spent, without budgets)
+        // B. Budget card, or total balance when no budget is set
         item {
-            AppCard(onClick = onNavigateToBudgets) {
-                val hasBudget = snapshot.totalBudget > 0
+            val hasBudget = snapshot.totalBudget > 0
+            HeroCard(onClick = onNavigateToBudgets) {
+                val muted = p.onHeroMuted
                 if (hasBudget) {
                     val left = snapshot.totalBudget - snapshot.totalBudgetSpent
                     val ratio = snapshot.totalBudgetSpent / snapshot.totalBudget
-                    Label("Còn được tiêu tháng này")
+                    Text(if (left >= 0) "Ngân sách còn lại" else "Đã vượt ngân sách", fontSize = TextSize.sm, color = muted)
                     Spacer(Modifier.height(Space.xs))
-                    Text(money(left), fontSize = TextSize.hero, fontWeight = FontWeight.Bold,
-                        color = if (left < 0) Tone.danger else AppleTextPrimary, maxLines = 1)
+                    HeroMoney(money(kotlin.math.abs(left)))
                     Spacer(Modifier.height(Space.md))
-                    ThresholdBar(ratio)
+                    ThresholdBar(
+                        ratio,
+                        trackColor = LocalContentColor.current.copy(alpha = 0.18f),
+                        color = if (ratio > 1) p.expenseSoft else if (ratio >= 0.8) p.warning else LocalContentColor.current
+                    )
                     Spacer(Modifier.height(Space.sm))
                     Row {
-                        Text("Đã chi ${if (visible) compactVnd(snapshot.totalBudgetSpent) else HIDDEN} / ${if (visible) compactVnd(snapshot.totalBudget) else HIDDEN}",
-                            fontSize = TextSize.xs, color = AppleTextSecondary, modifier = Modifier.weight(1f))
-                        Text(
-                            if (left > 0) "≈ ${if (visible) compactVnd(snapshot.dailyAllowance) else HIDDEN}/ngày · còn ${snapshot.daysLeft} ngày" else "Đã vượt ngân sách",
-                            fontSize = TextSize.xs, color = if (left > 0) AppleTextSecondary else thresholdColor(ratio)
-                        )
+                        Text("Đã chi ${money(snapshot.totalBudgetSpent)} / ${money(snapshot.totalBudget)}", fontSize = TextSize.xs, color = muted, modifier = Modifier.weight(1f), maxLines = 1)
+                        Text("${(ratio * 100).roundToInt()}%", fontSize = TextSize.xs, fontWeight = FontWeight.SemiBold, color = if (ratio > 1) p.expenseSoft else muted)
+                    }
+                    if (monthOffset == 0 && left > 0) {
+                        Spacer(Modifier.height(Space.xs))
+                        Text("Mỗi ngày còn khoảng ${money(snapshot.dailyAllowance)} · còn ${snapshot.daysLeft} ngày", fontSize = TextSize.xs, color = muted)
                     }
                 } else {
-                    Label("Đã chi tháng này")
+                    // No budget: show the money actually in the tracked accounts, never a made-up budget.
+                    Text("Tổng số dư các tài khoản", fontSize = TextSize.sm, color = muted)
                     Spacer(Modifier.height(Space.xs))
-                    Text(money(snapshot.monthlyExpense), fontSize = TextSize.hero, fontWeight = FontWeight.Bold, color = AppleTextPrimary, maxLines = 1)
-                    Spacer(Modifier.height(Space.xs))
-                    Text("Đặt ngân sách để biết mỗi ngày còn được tiêu bao nhiêu ›", fontSize = TextSize.xs, color = Tone.accent)
-                }
-                Spacer(Modifier.height(Space.lg))
-                RowDivider()
-                Spacer(Modifier.height(Space.md))
-                Row {
-                    Column(Modifier.weight(1f)) {
-                        Label("Thu")
-                        Text(if (visible) compactVnd(snapshot.monthlyIncome) else HIDDEN, fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = Tone.income)
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Label("Chi")
-                        Text(if (visible) compactVnd(snapshot.monthlyExpense) else HIDDEN, fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary)
-                    }
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                        Label("So tháng trước")
-                        val prev = snapshot.previousMonthExpense
-                        if (prev > 0) {
-                            val change = (snapshot.monthlyExpense - prev) / prev
-                            Text(
-                                "${if (change >= 0) "▲" else "▼"} ${(abs(change) * 100).roundToInt()}%",
-                                fontSize = TextSize.base, fontWeight = FontWeight.SemiBold,
-                                // Spending more than last month is the bad direction.
-                                color = if (change > 0.05) Tone.warning else Tone.ok
-                            )
-                        } else {
-                            Text("—", fontSize = TextSize.base, color = AppleTextSecondary)
-                        }
+                    HeroMoney(money(snapshot.totalAssets))
+                    Spacer(Modifier.height(Space.md))
+                    Row(
+                        modifier = Modifier
+                            .clip(Radius.md)
+                            .background(LocalContentColor.current.copy(alpha = 0.14f))
+                            .clickable(onClick = onNavigateToBudgets)
+                            .heightIn(min = 40.dp)
+                            .padding(horizontal = Space.md),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Thiết lập ngân sách", fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
         }
 
-        // 3. Assistant findings
-        if (insights.isNotEmpty()) {
-            item {
-                SectionHeader("Trợ lý nhận xét", action = "Hỏi thêm", onAction = { onNavigateToAiAssistant(null) })
-                Spacer(Modifier.height(Space.sm))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                    items(insights.take(4)) { insight ->
-                        InsightCard(insight, modifier = Modifier.width(272.dp)) { onNavigateToAiAssistant(insight.followUp) }
-                    }
-                }
-            }
-        }
-
-        // 4. Needs attention: card due dates, bills, pending QR payments
-        if (cardsDueSoon.isNotEmpty() || billsDueSoon.isNotEmpty() || pendingQr.isNotEmpty()) {
-            item {
-                SectionHeader("Cần chú ý")
-                Spacer(Modifier.height(Space.sm))
-                AppCard(contentPadding = Space.lg) {
-                    val rows = mutableListOf<@Composable () -> Unit>()
-                    cardsDueSoon.forEach { card ->
-                        rows += {
-                            ListRow(
-                                title = card.account.name.let { if (it.startsWith("Thẻ")) "Trả ${it.replaceFirstChar { c -> c.lowercase() }}" else "Trả thẻ $it" },
-                                subtitle = if (card.daysToDue == 0) "Đến hạn hôm nay" else "Đến hạn sau ${card.daysToDue} ngày",
-                                leading = { IconTile(Tone.danger, icon = Icons.Default.CreditCard) },
-                                trailing = { Text(money(card.debt), fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = Tone.danger) },
-                                onClick = onNavigateToAccounts
-                            )
-                        }
-                    }
-                    billsDueSoon.forEach { bill ->
-                        val days = ((bill.nextDueDate - now) / 86_400_000L).toInt()
-                        rows += {
-                            ListRow(
-                                title = bill.name,
-                                subtitle = when { days < 0 -> "Quá hạn ${-days} ngày"; days == 0 -> "Đến hạn hôm nay"; else -> "Đến hạn sau $days ngày" },
-                                leading = { IconTile(if (days < 0) Tone.danger else Tone.warning, icon = Icons.Default.Receipt) },
-                                trailing = { Text(money(bill.amount), fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary) },
-                                onClick = onNavigateToPlans
-                            )
-                        }
-                    }
-                    if (pendingQr.isNotEmpty()) {
-                        rows += {
-                            ListRow(
-                                title = "${pendingQr.size} khoản QR chờ xác nhận",
-                                subtitle = "Xác nhận đã chuyển khoản để trừ vào số dư",
-                                leading = { IconTile(Tone.warning, icon = Icons.Default.QrCodeScanner) },
-                                trailing = { Text(money(pendingQr.sumOf { it.amount }), fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = Tone.warning) },
-                                onClick = onNavigateToTransactions
-                            )
-                        }
-                    }
-                    rows.forEachIndexed { i, row -> if (i > 0) RowDivider(); row() }
-                }
-            }
-        }
-
-        // 5. Accounts
+        // C. Income and expense this month
         item {
-            SectionHeader("Tài khoản", action = "Tất cả", onAction = onNavigateToAccounts)
-            Spacer(Modifier.height(Space.sm))
-            AppCard(onClick = onNavigateToAccounts) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Column(Modifier.weight(1f)) {
-                        Label("Tài sản ròng")
-                        Text(money(snapshot.netWorth), fontSize = TextSize.figure, fontWeight = FontWeight.Bold, color = AppleTextPrimary, maxLines = 1)
-                    }
-                    if (snapshot.creditCardDebt > 0) {
-                        Column(horizontalAlignment = Alignment.End) {
-                            Label("Nợ thẻ")
-                            Text(if (visible) compactVnd(snapshot.creditCardDebt) else HIDDEN, fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = Tone.danger)
-                        }
-                    }
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
+                FlowCard("Thu ${if (monthOffset == 0) "tháng này" else "trong tháng"}", money(snapshot.monthlyIncome), up = true, modifier = Modifier.weight(1f))
+                FlowCard("Chi ${if (monthOffset == 0) "tháng này" else "trong tháng"}", money(snapshot.monthlyExpense), up = false, modifier = Modifier.weight(1f))
             }
-            Spacer(Modifier.height(Space.md))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                items(accounts, key = { it.id }) { acc ->
-                    AppCard(modifier = Modifier.width(164.dp), onClick = onNavigateToAccounts, contentPadding = Space.md + Space.xs) {
-                        AccountLogo(acc, size = 28.dp)
-                        Spacer(Modifier.height(Space.md))
-                        Text(acc.name, fontSize = TextSize.xs, color = AppleTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (acc.type == AccountType.CREDIT_CARD) {
-                            val debt = (-acc.balance).coerceAtLeast(0.0)
-                            Text(if (visible) compactVnd(debt) else HIDDEN, fontSize = TextSize.base, fontWeight = FontWeight.SemiBold,
-                                color = if (debt > 0) Tone.danger else AppleTextPrimary, maxLines = 1)
-                            if (acc.creditLimit > 0) {
-                                Spacer(Modifier.height(Space.xs + 2.dp))
-                                ThresholdBar(debt / acc.creditLimit, height = 4.dp)
-                            }
-                        } else {
-                            Text(if (visible) compactVnd(acc.balance) else HIDDEN, fontSize = TextSize.base, fontWeight = FontWeight.SemiBold,
-                                color = if (acc.balance < 0) Tone.danger else AppleTextPrimary, maxLines = 1)
-                        }
+        }
+
+        // D. Net worth with a compact account list
+        item {
+            AppCard(contentPadding = Space.lg) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToAccounts),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Tài sản ròng", fontSize = TextSize.sm, color = p.textSecondary)
+                        HeroMoney(money(snapshot.netWorth), color = p.textPrimary, base = TextSize.figure)
+                    }
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Xem tài khoản", tint = p.textTertiary)
+                }
+                if (accounts.isNotEmpty()) {
+                    Spacer(Modifier.height(Space.sm))
+                    accounts.take(4).forEach { acc ->
+                        RowDivider()
+                        val debt = acc.type == AccountType.CREDIT_CARD
+                        ListRow(
+                            title = acc.name,
+                            subtitle = acc.accountNumberMasked,
+                            leading = { AccountLogo(acc, size = 32.dp) },
+                            trailing = {
+                                MoneyText(money(acc.balance), color = if (acc.balance < 0 || debt && acc.balance < 0) p.expense else p.textPrimary)
+                            },
+                            showChevron = true,
+                            onClick = { onOpenAccount(acc.id) }
+                        )
+                    }
+                    if (accounts.size > 4) {
+                        RowDivider()
+                        Text(
+                            "Xem tất cả ${accounts.size} tài khoản",
+                            fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = p.accent,
+                            modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToAccounts).heightIn(min = Space.touch).padding(top = Space.md)
+                        )
                     }
                 }
             }
         }
 
-        // 6. Recent transactions
+        // E. Recent transactions
         item {
             SectionHeader("Giao dịch gần đây", action = "Xem tất cả", onAction = onNavigateToTransactions)
-            Spacer(Modifier.height(Space.sm))
+            Spacer(Modifier.height(Space.xs))
             AppCard(contentPadding = Space.lg) {
                 if (transactions.isEmpty()) {
-                    com.example.ui.components.EmptyState(
+                    EmptyState(
                         title = "Chưa có giao dịch",
-                        body = "Bấm ➕ để ghi, hoặc giữ ➕ rồi nói \"cà phê 35k\".",
-                        actionLabel = "Ghi giao dịch đầu tiên",
+                        body = "Bấm + để ghi khoản đầu tiên.",
+                        actionLabel = "Thêm giao dịch",
                         onAction = onNavigateToAddTransaction
                     )
                 } else {
@@ -328,14 +258,13 @@ fun ScreenDashboard(
             }
         }
 
-        // 7. Plans
+        // F. Shortcut to debts, goals and bills
         item {
-            val debts by viewModel.debts.collectAsState()
-            AppCard(onClick = onNavigateToPlans, contentPadding = Space.md + Space.xs) {
+            AppCard(onClick = onNavigateToPlans, contentPadding = Space.md, color = p.accentSoft, borderColor = p.accentSoft) {
                 ListRow(
                     title = "Sổ nợ, mục tiêu & hóa đơn",
                     subtitle = "${debts.count { !it.isSettled }} khoản nợ đang mở · ${bills.size} hóa đơn định kỳ",
-                    leading = { IconTile(Tone.transfer, icon = Icons.Default.EventNote) },
+                    leading = { IconTile(Icons.AutoMirrored.Outlined.EventNote, tint = p.accent, background = p.card) },
                     showChevron = true,
                     modifier = Modifier.testTag("card_plans")
                 )
@@ -344,3 +273,23 @@ fun ScreenDashboard(
     }
 }
 
+@Composable
+private fun FlowCard(label: String, amount: String, up: Boolean, modifier: Modifier = Modifier) {
+    val p = AppPalette
+    AppCard(modifier = modifier, contentPadding = Space.md + Space.xs) {
+        // Icon and label on one line, the amount on its own full-width line so large sums fit at 360 dp.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconTile(
+                if (up) Icons.Outlined.ArrowUpward else Icons.Outlined.ArrowDownward,
+                tint = if (up) p.income else p.expense,
+                background = if (up) p.accentSoft else p.expenseSoft,
+                size = 28.dp,
+                shape = CircleShape
+            )
+            Spacer(Modifier.width(Space.sm))
+            Text(label, fontSize = TextSize.xs, color = p.textSecondary, maxLines = 1)
+        }
+        Spacer(Modifier.height(Space.sm))
+        HeroMoney(amount, color = if (up) p.income else p.expense, base = TextSize.lg)
+    }
+}

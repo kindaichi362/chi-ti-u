@@ -87,8 +87,8 @@ class ScreenshotTest {
         repo.insertDebt(Debt(type = DebtType.OWED_TO_ME, personName = "Anh Tuấn", initialAmount = 3_000_000.0, remainingAmount = 2_000_000.0))
     }
 
-    private fun shoot(name: String, vm: FinanceViewModel, start: MainDestination) {
-        compose.setContent { ChiTieuThanhPhatTheme { MainAppScreen(viewModel = vm, startDestination = start) } }
+    private fun shoot(name: String, vm: FinanceViewModel, start: MainDestination, dark: Boolean = false, accountId: Long? = null) {
+        compose.setContent { ChiTieuThanhPhatTheme(darkTheme = dark) { MainAppScreen(viewModel = vm, startDestination = start, startAccountId = accountId) } }
         // Robolectric pauses the main looper; pump it so Room flows reach the ViewModel state.
         repeat(40) {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
@@ -103,13 +103,13 @@ class ScreenshotTest {
         File(outDir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    private fun run(dest: MainDestination, suffix: String = "") {
+    private fun run(dest: MainDestination, suffix: String = "", dark: Boolean = false, accountId: Long? = null) {
         val app = ApplicationProvider.getApplicationContext<Application>()
         AppDatabase.resetForTests()
         app.deleteDatabase("chi_tieu_thanh_phat_db")
         val vm = FinanceViewModel(app)
         seed(vm)
-        shoot(dest.name.lowercase() + suffix, vm, dest)
+        shoot(dest.name.lowercase() + suffix, vm, dest, dark, accountId)
     }
 
     @Test fun dashboard() = run(MainDestination.DASHBOARD)
@@ -125,4 +125,10 @@ class ScreenshotTest {
     @Test @Config(qualifiers = "w393dp-h2000dp-xxhdpi") fun dashboardFull() = run(MainDestination.DASHBOARD, "_full")
     @Test @Config(qualifiers = "w393dp-h2000dp-xxhdpi") fun accountsFull() = run(MainDestination.ACCOUNTS, "_full")
     @Test @Config(qualifiers = "w393dp-h1700dp-xxhdpi") fun transactionsFull() = run(MainDestination.TRANSACTIONS, "_full")
+    @Test @Config(qualifiers = "w393dp-h2000dp-xxhdpi") fun reportsFull() = run(MainDestination.REPORTS, "_full")
+    @Test @Config(qualifiers = "w393dp-h1900dp-xxhdpi") fun addFull() = run(MainDestination.ADD_TRANSACTION, "_full")
+    @Test @Config(qualifiers = "w393dp-h2000dp-xxhdpi") fun dashboardDark() = run(MainDestination.DASHBOARD, "_dark", dark = true)
+    @Test @Config(qualifiers = "w360dp-h780dp-xxhdpi") fun dashboardNarrow() = run(MainDestination.DASHBOARD, "_360")
+    @Test fun settings() = run(MainDestination.SETTINGS)
+    @Test @Config(qualifiers = "w393dp-h1800dp-xxhdpi") fun cardDetail() = run(MainDestination.ACCOUNT_DETAIL, "_card", accountId = 5)
 }

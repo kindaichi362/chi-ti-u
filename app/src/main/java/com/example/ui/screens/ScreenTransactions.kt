@@ -1,18 +1,5 @@
 package com.example.ui.screens
 
-import com.example.data.model.countsInReports
-import com.example.ui.theme.Tone
-import com.example.ui.theme.TextSize
-import com.example.ui.theme.Space
-import com.example.ui.theme.Radius
-import com.example.ui.components.compactVnd
-import com.example.ui.components.TransactionRow
-import com.example.ui.components.RowDivider
-import com.example.ui.components.Label
-import com.example.ui.components.EmptyState
-import com.example.ui.components.AppCard
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,31 +13,27 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -62,274 +45,345 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.ai.NaturalLanguageSearchEngine
-import com.example.ai.NaturalQueryResult
-import com.example.data.model.PaymentStatus
 import com.example.data.model.Transaction
 import com.example.data.model.TransactionType
+import com.example.data.model.countsInReports
+import com.example.ui.components.AccountLogo
+import com.example.ui.components.AppCard
+import com.example.ui.components.ChoiceChip
 import com.example.ui.components.EditTransactionDialog
-import com.example.ui.components.BankLogoBadge
-import com.example.ui.components.VoiceTransactionBottomSheet
+import com.example.ui.components.EmptyState
+import com.example.ui.components.IconTile
+import com.example.ui.components.Label
+import com.example.ui.components.MINUS
+import com.example.ui.components.MoneyText
+import com.example.ui.components.RowDivider
+import com.example.ui.components.TransactionRow
 import com.example.ui.components.formatVnd
-import com.example.ui.components.getIconForName
-import com.example.ui.components.parseColorSafe
-import com.example.ui.theme.AppleBorder
-import com.example.ui.theme.AppleCyan
-import com.example.ui.theme.AppleGreen
-import com.example.ui.theme.AppleOrange
-import com.example.ui.theme.AppleRed
-import com.example.ui.theme.AppleSurface1
-import com.example.ui.theme.AppleSurface2
-import com.example.ui.theme.AppleSurface3
-import com.example.ui.theme.AppleTextPrimary
-import com.example.ui.theme.AppleTextSecondary
-import com.example.ui.theme.ExpenseRed
-import com.example.ui.theme.OledBlack
+import com.example.ui.components.monthLabel
+import com.example.ui.theme.AppPalette
+import com.example.ui.theme.Radius
+import com.example.ui.theme.Space
+import com.example.ui.theme.TextSize
 import com.example.ui.viewmodel.FinanceViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+private fun monthRange(offset: Int): LongRange {
+    val start = Calendar.getInstance().apply {
+        set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0); add(Calendar.MONTH, offset)
+    }
+    val end = (start.clone() as Calendar).apply { add(Calendar.MONTH, 1) }
+    return start.timeInMillis until end.timeInMillis
+}
+
+private val NATURAL_HINTS = listOf("bao nhiêu", "tháng trước", "hôm nay", "hôm qua", "trên ", "dưới ", "tiêu gì", "tuần")
+
+/**
+ * Transactions: search, type chips, month (or all time), totals for exactly what is listed,
+ * then one card per day. Filters live in the ViewModel so they survive switching tabs.
+ */
 @Composable
 fun ScreenTransactions(
     viewModel: FinanceViewModel,
     onNavigateToAddTransaction: () -> Unit,
+    onVoice: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val p = AppPalette
     val transactions by viewModel.transactions.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
+    val filter by viewModel.txFilter.collectAsState()
 
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedFilterType by remember { mutableStateOf<TransactionType?>(null) }
-    var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
-    var transactionToEdit by remember { mutableStateOf<Transaction?>(null) }
-    var showVoiceSheet by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Transaction?>(null) }
+    var deleting by remember { mutableStateOf<Transaction?>(null) }
+    var showAccountFilter by remember { mutableStateOf(false) }
+    var monthMenu by remember { mutableStateOf(false) }
 
-    // Natural Language Query check
-    val isNaturalQuery = remember(searchQuery) {
-        val q = searchQuery.lowercase(Locale.ROOT)
-        q.contains("tháng") || q.contains("bao nhiêu") || q.contains("khoản") ||
-        q.contains("trên") || q.contains("dưới") || q.contains("tiêu gì") ||
-        q.contains("ngày") || q.contains("hôm nay") || q.contains("hôm qua")
+    val categoryById = remember(categories) { categories.associateBy { it.id } }
+    val accountById = remember(accounts) { accounts.associateBy { it.id } }
+
+    // A question ("tháng này ăn uống bao nhiêu") is answered by the search engine; plain words filter.
+    val natural = remember(filter.query, transactions, accounts, categories) {
+        val q = filter.query.lowercase(Locale.ROOT)
+        if (q.isNotBlank() && NATURAL_HINTS.any { q.contains(it) }) NaturalLanguageSearchEngine.executeQuery(filter.query, transactions, accounts, categories) else null
     }
 
-    val naturalResult: NaturalQueryResult? = remember(searchQuery, transactions, accounts, categories) {
-        if (isNaturalQuery && searchQuery.isNotBlank()) {
-            NaturalLanguageSearchEngine.executeQuery(searchQuery, transactions, accounts, categories)
-        } else {
-            null
-        }
-    }
-
-    val categoryNames = remember(categories) { categories.associate { it.id to it.name } }
-    val accountNames = remember(accounts) { accounts.associate { it.id to it.name } }
-
-    val filteredList = remember(searchQuery, selectedFilterType, transactions, naturalResult, categoryNames, accountNames) {
-        if (naturalResult != null) {
-            naturalResult.filteredTransactions
-        } else {
+    val listed = remember(filter, transactions, categoryById, accountById, natural) {
+        if (natural != null) natural.filteredTransactions
+        else {
+            val range = filter.monthOffset?.let(::monthRange)
             transactions.filter { tx ->
-                val matchesType = selectedFilterType == null || tx.type == selectedFilterType
-                val catName = categoryNames[tx.categoryId] ?: ""
-                val accName = accountNames[tx.sourceAccountId] ?: ""
-                val matchesSearch = searchQuery.isBlank() ||
-                        tx.note.contains(searchQuery, ignoreCase = true) ||
-                        catName.contains(searchQuery, ignoreCase = true) ||
-                        accName.contains(searchQuery, ignoreCase = true)
-                matchesType && matchesSearch
+                (range == null || tx.timestamp in range) &&
+                    (filter.type == null || tx.type == filter.type) &&
+                    (filter.accountId == null || tx.sourceAccountId == filter.accountId || tx.destinationAccountId == filter.accountId) &&
+                    (filter.query.isBlank() || listOfNotNull(tx.note, categoryById[tx.categoryId]?.name, accountById[tx.sourceAccountId]?.name)
+                        .any { it.contains(filter.query.trim(), ignoreCase = true) })
             }
         }
     }
+    // Totals of exactly the listed rows; transfers and pending/cancelled payments never count.
+    val totalIn = listed.filter { it.type == TransactionType.INCOME && it.countsInReports }.sumOf { it.amount }
+    val totalOut = listed.filter { it.type == TransactionType.EXPENSE && it.countsInReports }.sumOf { it.amount }
 
-    // Group by Date (computed once per list change, not on every recomposition)
-    val grouped = remember(filteredList) {
-        val dayFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-        val today = dayFormat.format(Date())
-        val yesterday = dayFormat.format(Date(System.currentTimeMillis() - 86_400_000L))
-        filteredList.groupBy { tx ->
-            when (val day = dayFormat.format(Date(tx.date))) {
-                today -> "Hôm nay"
-                yesterday -> "Hôm qua"
-                else -> day
-            }
+    val grouped = remember(listed) {
+        val dayFmt = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        val longFmt = SimpleDateFormat("d 'tháng' M, yyyy", Locale.getDefault())
+        val today = dayFmt.format(Date())
+        val yesterday = dayFmt.format(Date(System.currentTimeMillis() - 86_400_000L))
+        listed.groupBy { dayFmt.format(Date(it.timestamp)) }.map { (day, txs) ->
+            val label = when (day) { today -> "Hôm nay"; yesterday -> "Hôm qua"; else -> longFmt.format(Date(txs.first().timestamp)) }
+            label to txs
         }
     }
 
-    transactionToEdit?.let { editing ->
+    editing?.let { tx ->
         EditTransactionDialog(
-            transaction = editing,
+            transaction = tx,
             accounts = accounts,
             categories = categories,
-            onDismiss = { transactionToEdit = null },
-            onDelete = {
-                transactionToDelete = editing
-                transactionToEdit = null
-            },
-            onSave = {
-                viewModel.updateTransaction(it)
-                transactionToEdit = null
-            }
+            onDismiss = { editing = null },
+            onDelete = { deleting = tx; editing = null },
+            onSave = { viewModel.updateTransaction(it); editing = null }
         )
     }
-
-    if (transactionToDelete != null) {
+    deleting?.let { tx ->
         AlertDialog(
-            onDismissRequest = { transactionToDelete = null },
-            containerColor = AppleSurface2,
-            title = { Text("Xác nhận xóa giao dịch?", color = AppleTextPrimary, fontWeight = FontWeight.Bold) },
-            text = { Text("Số dư tài khoản liên quan sẽ được tự động hoàn lại tương ứng.", color = AppleTextSecondary) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        transactionToDelete?.let { viewModel.deleteTransaction(it) }
-                        transactionToDelete = null
+            onDismissRequest = { deleting = null },
+            containerColor = p.card,
+            title = { Text("Xóa giao dịch?", fontWeight = FontWeight.Bold, color = p.textPrimary) },
+            text = { Text("Số dư tài khoản liên quan sẽ được hoàn lại tương ứng.", color = p.textSecondary) },
+            confirmButton = { TextButton(onClick = { viewModel.deleteTransaction(tx); deleting = null }) { Text("Xóa", color = p.danger, fontWeight = FontWeight.SemiBold) } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Hủy", color = p.textSecondary) } }
+        )
+    }
+    if (showAccountFilter) {
+        AlertDialog(
+            onDismissRequest = { showAccountFilter = false },
+            containerColor = p.card,
+            title = { Text("Lọc theo tài khoản", fontWeight = FontWeight.Bold, color = p.textPrimary) },
+            text = {
+                Column {
+                    FilterOption("Tất cả tài khoản", selected = filter.accountId == null) {
+                        viewModel.updateTxFilter { it.copy(accountId = null) }; showAccountFilter = false
                     }
-                ) {
-                    Text("Xóa", color = ExpenseRed, fontWeight = FontWeight.Bold)
+                    accounts.forEach { acc ->
+                        FilterOption(acc.name, selected = filter.accountId == acc.id, leading = { AccountLogo(acc, size = 24.dp) }) {
+                            viewModel.updateTxFilter { it.copy(accountId = acc.id) }; showAccountFilter = false
+                        }
+                    }
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { transactionToDelete = null }) {
-                    Text("Hủy", color = AppleTextSecondary)
-                }
-            }
+            confirmButton = { TextButton(onClick = { showAccountFilter = false }) { Text("Đóng", color = p.textSecondary) } }
         )
     }
 
-    val accountByIdMap = remember(accounts) { accounts.associateBy { it.id } }
-    val categoryByIdMap = remember(categories) { categories.associateBy { it.id } }
-    val filterOptions = listOf<Pair<String, TransactionType?>>(
-        "Tất cả" to null, "Chi" to TransactionType.EXPENSE, "Thu" to TransactionType.INCOME, "Chuyển" to TransactionType.TRANSFER
-    )
-
-    Box(modifier = modifier.fillMaxSize().background(OledBlack)) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.lg, bottom = Space.xxl),
-            verticalArrangement = Arrangement.spacedBy(Space.md)
-        ) {
-            item {
-                Text("Giao dịch", fontSize = TextSize.xl, fontWeight = FontWeight.Bold, color = AppleTextPrimary)
+    LazyColumn(
+        modifier = modifier.fillMaxSize().background(p.background),
+        contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.md, bottom = Space.xxl),
+        verticalArrangement = Arrangement.spacedBy(Space.md)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Giao dịch", fontSize = TextSize.xl, fontWeight = FontWeight.Bold, color = p.textPrimary, modifier = Modifier.weight(1f))
+                Box {
+                    IconButton(onClick = { showAccountFilter = true }) {
+                        Icon(Icons.Outlined.FilterList, contentDescription = "Bộ lọc", tint = if (filter.accountId != null) p.accent else p.textPrimary)
+                    }
+                    if (filter.accountId != null) Box(Modifier.size(8.dp).align(Alignment.TopEnd).padding(1.dp).clip(Radius.pill).background(p.accent))
+                }
             }
+        }
 
-            // Search: plain text, or a question ("tháng này tiêu ăn uống bao nhiêu")
-            item {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Tìm, hoặc hỏi \"tháng này ăn uống bao nhiêu\"", fontSize = TextSize.sm, color = AppleTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = AppleTextSecondary, modifier = Modifier.size(20.dp)) },
-                    trailingIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Xóa tìm kiếm", tint = AppleTextSecondary, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                            IconButton(onClick = { showVoiceSheet = true }, modifier = Modifier.testTag("search_voice_btn")) {
-                                Icon(Icons.Default.Mic, contentDescription = "Nói để ghi", tint = Tone.accent, modifier = Modifier.size(20.dp))
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().testTag("transaction_search_field"),
-                    shape = Radius.md,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = AppleSurface1,
-                        unfocusedContainerColor = AppleSurface1,
-                        focusedBorderColor = Tone.accent,
-                        unfocusedBorderColor = Tone.hairline
-                    ),
-                    singleLine = true
-                )
+        // Search
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .clip(Radius.md)
+                    .background(p.card)
+                    .border(1.dp, p.border, Radius.md)
+                    .padding(start = Space.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.Search, contentDescription = null, tint = p.textSecondary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(Space.sm))
+                Box(Modifier.weight(1f)) {
+                    if (filter.query.isEmpty()) Text("Tìm giao dịch…", fontSize = TextSize.base, color = p.textSecondary)
+                    BasicTextField(
+                        value = filter.query,
+                        onValueChange = { q -> viewModel.updateTxFilter { it.copy(query = q) } },
+                        singleLine = true,
+                        textStyle = TextStyle(fontSize = TextSize.base, color = p.textPrimary),
+                        cursorBrush = SolidColor(p.accent),
+                        modifier = Modifier.fillMaxWidth().testTag("transaction_search_field")
+                    )
+                }
+                if (filter.query.isNotEmpty()) {
+                    IconButton(onClick = { viewModel.updateTxFilter { it.copy(query = "") } }) {
+                        Icon(Icons.Outlined.Clear, contentDescription = "Xóa tìm kiếm", tint = p.textSecondary)
+                    }
+                }
+                IconButton(onClick = onVoice, modifier = Modifier.testTag("search_voice_btn")) {
+                    Icon(Icons.Outlined.Mic, contentDescription = "Ghi bằng giọng nói", tint = p.accent)
+                }
             }
+        }
 
-            item {
+        // Type chips
+        item {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                listOf("Tất cả" to null, "Chi" to TransactionType.EXPENSE, "Thu" to TransactionType.INCOME, "Chuyển" to TransactionType.TRANSFER)
+                    .forEach { (label, type) ->
+                        ChoiceChip(label, selected = filter.type == type, onClick = { viewModel.updateTxFilter { it.copy(type = type) } })
+                    }
+            }
+        }
+
+        // Month (or all time)
+        item {
+            Box {
                 Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(Space.sm)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clip(Radius.md)
+                        .background(p.card)
+                        .border(1.dp, p.border, Radius.md)
+                        .clickable(role = Role.DropdownList) { monthMenu = true },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    filterOptions.forEach { (label, type) ->
-                        FilterChip(
-                            selected = selectedFilterType == type,
-                            onClick = { selectedFilterType = type },
-                            label = { Text(label, fontSize = TextSize.sm) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Tone.accent,
-                                selectedLabelColor = Color.Black
-                            )
+                    Text(filter.monthOffset?.let(::monthLabel) ?: "Tất cả thời gian", fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = p.textPrimary)
+                    Spacer(Modifier.width(Space.xs))
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Chọn thời gian", tint = p.textSecondary)
+                }
+                DropdownMenu(expanded = monthMenu, onDismissRequest = { monthMenu = false }, containerColor = p.card) {
+                    DropdownMenuItem(text = { Text("Tất cả thời gian", color = p.textPrimary) }, onClick = { viewModel.updateTxFilter { it.copy(monthOffset = null) }; monthMenu = false })
+                    for (o in 0 downTo -11) {
+                        DropdownMenuItem(
+                            text = { Text(monthLabel(o), color = if (filter.monthOffset == o) p.accent else p.textPrimary, fontWeight = if (filter.monthOffset == o) FontWeight.SemiBold else FontWeight.Normal) },
+                            onClick = { viewModel.updateTxFilter { it.copy(monthOffset = o) }; monthMenu = false }
                         )
                     }
                 }
             }
+        }
 
-            if (naturalResult != null) {
-                item {
-                    AppCard(modifier = Modifier.testTag("natural_search_result_card"), borderColor = Tone.accent.copy(alpha = 0.4f)) {
-                        Label("Kết quả", color = Tone.accent)
-                        Spacer(Modifier.height(Space.xs))
-                        Text(naturalResult.summaryText, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary)
+        // Totals for the listed range
+        item {
+            AppCard(contentPadding = Space.lg) {
+                if (natural != null) {
+                    Label("Kết quả", color = p.accent)
+                    Spacer(Modifier.height(Space.xs))
+                    Text(natural.summaryText, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = p.textPrimary)
+                    Spacer(Modifier.height(Space.md))
+                }
+                Row {
+                    Column(Modifier.weight(1f)) {
+                        Label("Tổng thu")
+                        MoneyText(formatVnd(totalIn), fontSize = TextSize.lg, color = p.income)
+                    }
+                    Box(Modifier.width(1.dp).height(40.dp).background(p.border))
+                    Column(Modifier.weight(1f).padding(start = Space.lg)) {
+                        Label("Tổng chi")
+                        MoneyText(formatVnd(totalOut), fontSize = TextSize.lg, color = p.expense)
                     }
                 }
             }
+        }
 
-            if (filteredList.isEmpty()) {
-                item {
-                    AppCard {
+        if (listed.isEmpty()) {
+            item {
+                AppCard {
+                    if (transactions.isEmpty()) {
                         EmptyState(
-                            title = if (transactions.isEmpty()) "Chưa có giao dịch" else "Không có giao dịch phù hợp",
-                            body = if (transactions.isEmpty()) "Bấm ➕ ở thanh dưới để ghi khoản đầu tiên." else "Thử bỏ bộ lọc hoặc đổi từ khóa.",
-                            actionLabel = if (transactions.isEmpty()) "Ghi giao dịch" else null,
-                            onAction = if (transactions.isEmpty()) onNavigateToAddTransaction else null
+                            icon = Icons.Outlined.ReceiptLong,
+                            title = "Chưa có giao dịch",
+                            body = "Bấm + ở thanh dưới để ghi khoản đầu tiên.",
+                            actionLabel = "Thêm giao dịch",
+                            onAction = onNavigateToAddTransaction
+                        )
+                    } else {
+                        EmptyState(
+                            icon = Icons.Outlined.SearchOff,
+                            title = "Không có giao dịch phù hợp",
+                            body = "Thử đổi tháng, loại giao dịch hoặc từ khóa.",
+                            actionLabel = if (!filter.isDefault) "Bỏ bộ lọc" else null,
+                            onAction = { viewModel.updateTxFilter { FinanceViewModel.TxFilter() } }
                         )
                     }
                 }
             }
+        }
 
-            // One card per day, with that day's spending on the header line.
-            for ((groupDate, txs) in grouped) {
-                item(key = "day_$groupDate") {
-                    val daySpend = txs.filter { it.type == TransactionType.EXPENSE && it.countsInReports }.sumOf { it.amount }
-                    val dayIncome = txs.filter { it.type == TransactionType.INCOME && it.countsInReports }.sumOf { it.amount }
-                    Row(Modifier.fillMaxWidth().padding(top = Space.xs, bottom = Space.sm), verticalAlignment = Alignment.CenterVertically) {
-                        Text(groupDate, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = AppleTextSecondary, modifier = Modifier.weight(1f))
-                        if (dayIncome > 0) Text("+${compactVnd(dayIncome)}  ", fontSize = TextSize.xs, color = Tone.income)
-                        if (daySpend > 0) Text("-${compactVnd(daySpend)}", fontSize = TextSize.xs, color = AppleTextSecondary)
+        for ((day, txs) in grouped) {
+            item(key = "day_$day") {
+                val dayIn = txs.filter { it.type == TransactionType.INCOME && it.countsInReports }.sumOf { it.amount }
+                val dayOut = txs.filter { it.type == TransactionType.EXPENSE && it.countsInReports }.sumOf { it.amount }
+                Row(Modifier.fillMaxWidth().padding(top = Space.xs, bottom = Space.sm), verticalAlignment = Alignment.CenterVertically) {
+                    Text(day, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = p.textSecondary, modifier = Modifier.weight(1f))
+                    if (dayIn > 0) {
+                        MoneyText("+" + formatVnd(dayIn), fontSize = TextSize.sm, color = p.income)
+                        Spacer(Modifier.width(Space.sm))
                     }
-                    AppCard(contentPadding = Space.lg) {
-                        txs.forEachIndexed { i, tx ->
-                            if (i > 0) RowDivider()
-                            Box(Modifier.testTag("tx_item_${tx.id}")) {
-                                TransactionRow(
-                                    tx = tx,
-                                    category = categoryByIdMap[tx.categoryId],
-                                    account = accountByIdMap[tx.sourceAccountId],
-                                    destination = tx.destinationAccountId?.let { accountByIdMap[it] },
-                                    // Adjustments are corrected by reconciling again; tapping one offers deletion.
-                                    onClick = { if (tx.type == TransactionType.ADJUSTMENT) transactionToDelete = tx else transactionToEdit = tx }
-                                )
-                            }
+                    if (dayOut > 0) MoneyText(MINUS + formatVnd(dayOut), fontSize = TextSize.sm, color = p.textPrimary)
+                }
+                AppCard(contentPadding = Space.lg) {
+                    txs.forEachIndexed { i, tx ->
+                        if (i > 0) RowDivider()
+                        Box(Modifier.testTag("tx_item_${tx.id}")) {
+                            TransactionRow(
+                                tx = tx,
+                                category = categoryById[tx.categoryId],
+                                account = accountById[tx.sourceAccountId],
+                                destination = tx.destinationAccountId?.let { accountById[it] },
+                                onClick = { if (tx.type == com.example.data.model.TransactionType.ADJUSTMENT) deleting = tx else editing = tx }
+                            )
                         }
                     }
                 }
             }
         }
 
-        if (showVoiceSheet) {
-            VoiceTransactionBottomSheet(
-                viewModel = viewModel,
-                onDismiss = { showVoiceSheet = false },
-                onTransactionSaved = { showVoiceSheet = false },
-                autoStart = true
-            )
+        // Voice shortcut
+        item {
+            AppCard(onClick = onVoice, color = p.accentSoft, borderColor = p.accentSoft, contentPadding = Space.lg) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconTile(Icons.Outlined.Mic, tint = p.accent, background = p.card)
+                    Spacer(Modifier.width(Space.md))
+                    Column(Modifier.weight(1f)) {
+                        Text("Ghi nhanh bằng giọng nói", fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = p.textPrimary)
+                        Text("Ví dụ: Ăn sáng 30 nghìn, tiền mặt", fontSize = TextSize.xs, color = p.textSecondary)
+                    }
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = p.textTertiary)
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun FilterOption(label: String, selected: Boolean, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+    val p = AppPalette
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(Radius.sm).clickable(onClick = onClick).heightIn(min = 48.dp).padding(horizontal = Space.xs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (leading != null) { leading(); Spacer(Modifier.width(Space.md)) }
+        Text(label, fontSize = TextSize.base, color = if (selected) p.accent else p.textPrimary,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.weight(1f))
     }
 }

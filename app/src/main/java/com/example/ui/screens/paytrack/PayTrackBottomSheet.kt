@@ -392,7 +392,7 @@ fun ScanningStepContent(
                         onClick = onRequestPermission,
                         colors = ButtonDefaults.buttonColors(containerColor = AppleOrange)
                     ) {
-                        Text("Cấp quyền Camera", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text("Cấp quyền Camera", color = com.example.ui.theme.OnAccent, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -468,7 +468,7 @@ fun ScanningStepContent(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AppleOrange)
             ) {
-                Text("Quét", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text("Quét", color = com.example.ui.theme.OnAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
 
@@ -873,13 +873,13 @@ fun ConfirmDetailsStepContent(
                 Icon(
                     imageVector = Icons.Default.OpenInNew,
                     contentDescription = null,
-                    tint = Color.Black,
+                    tint = com.example.ui.theme.OnAccent,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Mở ${chosenBank.shortName} & Thanh toán",
-                    color = Color.Black,
+                    color = com.example.ui.theme.OnAccent,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
@@ -1007,13 +1007,13 @@ fun ReconciliationStepContent(
                 .testTag("btn_confirm_paid")
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color.Black)
+                Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = com.example.ui.theme.OnAccent)
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Đã thanh toán thành công",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    color = Color.Black
+                    color = com.example.ui.theme.OnAccent
                 )
             }
         }

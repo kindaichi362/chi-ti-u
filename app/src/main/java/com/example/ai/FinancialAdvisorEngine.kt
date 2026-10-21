@@ -86,7 +86,7 @@ object FinancialAdvisorEngine {
 
     private val vnFormat = NumberFormat.getNumberInstance(Locale.forLanguageTag("vi-VN"))
 
-    fun formatVnd(amount: Double): String = "${vnFormat.format(amount.toLong())} ₫"
+    fun formatVnd(amount: Double): String = com.example.ui.components.formatVnd(amount)
 
     /** "1,2 tr", "350k" — for sentences, where full numbers are hard to read. */
     fun compact(amount: Double): String {

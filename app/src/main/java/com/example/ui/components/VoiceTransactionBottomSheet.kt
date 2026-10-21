@@ -490,7 +490,7 @@ fun VoiceTransactionBottomSheet(
                         Icon(
                             imageVector = if (isListening) Icons.Default.GraphicEq else Icons.Default.Mic,
                             contentDescription = "Microphone",
-                            tint = if (isListening) Color.Black else AppleOrange,
+                            tint = if (isListening) com.example.ui.theme.OnAccent else AppleOrange,
                             modifier = Modifier.size(34.dp)
                         )
                     }
@@ -767,7 +767,7 @@ fun VoiceTransactionBottomSheet(
                                     },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = AppleOrange,
-                                        selectedLabelColor = Color.Black,
+                                        selectedLabelColor = com.example.ui.theme.OnAccent,
                                         containerColor = AppleSurface3,
                                         labelColor = AppleTextPrimary
                                     )
@@ -854,7 +854,7 @@ fun VoiceTransactionBottomSheet(
                                     },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = AppleOrange,
-                                        selectedLabelColor = Color.Black,
+                                        selectedLabelColor = com.example.ui.theme.OnAccent,
                                         containerColor = AppleSurface3,
                                         labelColor = AppleTextPrimary
                                     )
@@ -903,14 +903,14 @@ fun VoiceTransactionBottomSheet(
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = null,
-                                    tint = Color.Black,
+                                    tint = com.example.ui.theme.OnAccent,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Xác nhận lưu giao dịch",
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.Black,
+                                    color = com.example.ui.theme.OnAccent,
                                     fontSize = 15.sp
                                 )
                             }
@@ -1081,7 +1081,7 @@ fun VoiceTransactionBottomSheet(
                     Icon(
                         imageVector = Icons.Default.Send,
                         contentDescription = "Gửi",
-                        tint = Color.Black,
+                        tint = com.example.ui.theme.OnAccent,
                         modifier = Modifier.size(18.dp)
                     )
                 }

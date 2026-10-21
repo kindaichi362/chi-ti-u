@@ -1,5 +1,17 @@
 package com.example.ui.screens
 
+import kotlin.math.roundToInt
+import com.example.ui.components.categoryIcon
+import com.example.ui.components.compactVnd
+import com.example.ui.components.thresholdColor
+import com.example.ui.components.ThresholdBar
+import com.example.ui.components.IconTile
+import com.example.ui.components.RowDivider
+import com.example.ui.components.EmptyState
+import com.example.ui.components.MonthStepper
+import com.example.ui.components.MoneyText
+import com.example.ui.theme.MoneyStyle
+import com.example.ui.theme.AppPalette
 import com.example.ui.theme.AppleTextSecondary
 import com.example.ui.theme.AppleTextPrimary
 import com.example.ui.theme.Radius
@@ -126,510 +138,214 @@ fun formatCompactVnd(amount: Double): String {
     }
 }
 
+/** One slice of the month spending: a category, the colour of its group and its share. */
+private data class CategoryShare(val category: Category?, val name: String, val group: String, val color: Color, val amount: Double)
+
+/**
+ * Analysis of the month chosen in the shared month stepper: income / expense / difference,
+ * then either spending by category (donut by group + ranked list) or the calendar.
+ * Only real data is drawn; an empty month says so and offers the previous month.
+ */
 @Composable
 fun ScreenAnalytics(
     viewModel: FinanceViewModel,
+    onOpenBudgets: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val p = AppPalette
     val transactions by viewModel.transactions.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
+    val snapshot by viewModel.financialSnapshot.collectAsState()
+    val offset by viewModel.selectedMonthOffset.collectAsState()
+    var mode by remember { mutableIntStateOf(0) }
 
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Biểu đồ tròn, 1: Lịch thu chi
-
-    // Selected month navigation
-    var calendarMonthOffset by remember { mutableIntStateOf(0) } // 0: current month, -1: prev, etc.
-
-    val displayCalendar = remember(calendarMonthOffset) {
-        val cal = Calendar.getInstance()
-        cal.add(Calendar.MONTH, calendarMonthOffset)
-        cal.set(Calendar.DAY_OF_MONTH, 1)
-        cal.set(Calendar.HOUR_OF_DAY, 0)
-        cal.set(Calendar.MINUTE, 0)
-        cal.set(Calendar.SECOND, 0)
-        cal.set(Calendar.MILLISECOND, 0)
-        cal
+    val displayCalendar = remember(offset) {
+        Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0); add(Calendar.MONTH, offset)
+        }
     }
-
-    val monthStartTimestamp = displayCalendar.timeInMillis
-    val monthEndTimestamp = remember(calendarMonthOffset) {
-        val cal = displayCalendar.clone() as Calendar
-        cal.add(Calendar.MONTH, 1)
-        cal.add(Calendar.MILLISECOND, -1)
-        cal.timeInMillis
+    val monthKey = FinanceViewModel.monthKeyOf(displayCalendar.timeInMillis)
+    // Pending / cancelled QR payments never moved money, so they stay out of the report.
+    val monthTransactions = remember(transactions, monthKey) {
+        transactions.filter { it.countsInReports && FinanceViewModel.monthKeyOf(it.timestamp) == monthKey }
     }
-
-    val monthTransactions = remember(transactions, calendarMonthOffset) {
-        // Pending / cancelled QR payments never moved money, so they stay out of the report.
-        transactions.filter { it.countsInReports && it.timestamp in monthStartTimestamp..monthEndTimestamp }
-    }
-
     val monthExpense = monthTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
     val monthIncome = monthTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
-    val monthNetSavings = monthIncome - monthExpense
+    val net = monthIncome - monthExpense
 
-    val categoryExpenseMap = remember(monthTransactions, categories) {
-        val map = mutableMapOf<String, Double>()
-        for (tx in monthTransactions) {
-            if (tx.type == TransactionType.EXPENSE) {
-                val catName = categories.firstOrNull { it.id == tx.categoryId }?.name ?: "Khác"
-                map[catName] = (map[catName] ?: 0.0) + tx.amount
+    val shares = remember(monthTransactions, categories) {
+        val byId = categories.associateBy { it.id }
+        monthTransactions.filter { it.type == TransactionType.EXPENSE }
+            .groupBy { it.categoryId }
+            .map { (id, txs) ->
+                val c = id?.let { byId[it] }
+                CategoryShare(c, c?.name ?: "Chưa phân loại", c?.groupName ?: "Khác", parseColorSafe(c?.colorHex ?: "#78716C"), txs.sumOf { it.amount })
             }
-        }
-        map
+            .sortedByDescending { it.amount }
     }
-
-    val sortedCategories = remember(categoryExpenseMap) {
-        categoryExpenseMap.toList().sortedByDescending { it.second }
-    }
-
-    val monthTitle = SimpleDateFormat("MMMM yyyy", Locale("vi", "VN")).format(displayCalendar.time)
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = Space.page)
-    ) {
-        // Month navigator
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { calendarMonthOffset -= 1 }) {
-                Icon(imageVector = Icons.Default.ChevronLeft, contentDescription = "Tháng trước", tint = AppleTextPrimary)
-            }
-            Text(
-                text = monthTitle.replaceFirstChar { it.titlecase(Locale.forLanguageTag("vi-VN")) },
-                fontSize = TextSize.base,
-                fontWeight = FontWeight.SemiBold,
-                color = AppleTextPrimary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f)
-            )
-            if (calendarMonthOffset != 0) {
-                Text(
-                    text = "Tháng này",
-                    fontSize = TextSize.xs,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Tone.accent,
-                    modifier = Modifier.clip(Radius.sm).clickable { calendarMonthOffset = 0 }.padding(Space.xs)
-                )
-            }
-            IconButton(onClick = { calendarMonthOffset += 1 }, enabled = calendarMonthOffset < 0) {
-                Icon(imageVector = Icons.Default.ChevronRight, contentDescription = "Tháng sau",
-                    tint = if (calendarMonthOffset < 0) AppleTextPrimary else AppleTextSecondary.copy(alpha = 0.3f))
-            }
-        }
-
-        // Cash-flow summary: one card, three figures, colour only where it carries meaning.
-        AppCard(contentPadding = Space.lg) {
-            Row {
-                Column(Modifier.weight(1f)) {
-                    Label("Thu")
-                    Text(formatCompactVnd(monthIncome), fontSize = TextSize.lg, fontWeight = FontWeight.SemiBold, color = Tone.income, maxLines = 1)
-                }
-                Column(Modifier.weight(1f)) {
-                    Label("Chi")
-                    Text(formatCompactVnd(monthExpense), fontSize = TextSize.lg, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary, maxLines = 1)
-                }
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                    Label(if (monthNetSavings >= 0) "Để dành" else "Thâm hụt")
-                    Text(formatCompactVnd(kotlin.math.abs(monthNetSavings)), fontSize = TextSize.lg, fontWeight = FontWeight.SemiBold,
-                        color = if (monthNetSavings >= 0) Tone.income else Tone.danger, maxLines = 1)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(Space.md))
-
-        SegmentedTabs(
-            options = listOf("Theo danh mục", "Lịch thu chi"),
-            selected = selectedTab,
-            onSelect = { selectedTab = it }
-        )
-
-        Spacer(modifier = Modifier.height(Space.md))
-
-        when (selectedTab) {
-            0 -> DonutChartSection(
-                totalExpense = monthExpense,
-                sortedCategories = sortedCategories,
-                categories = categories,
-                monthTransactions = monthTransactions
-            )
-            1 -> FinancialCalendarSection(
-                displayCalendar = displayCalendar,
-                transactions = monthTransactions,
-                monthIncome = monthIncome,
-                monthExpense = monthExpense,
-                monthNetSavings = monthNetSavings,
-                categories = categories,
-                accounts = accounts
-            )
-        }
-    }
-}
-
-// -------------------------------------------------------------
-// 1. DONUT / PIE CHART COMPONENT & LIST
-// -------------------------------------------------------------
-
-@Composable
-fun DonutChartSection(
-    totalExpense: Double,
-    sortedCategories: List<Pair<String, Double>>,
-    categories: List<Category>,
-    monthTransactions: List<Transaction>
-) {
-    var selectedCategoryName by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 90.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = Space.xxl),
+        verticalArrangement = Arrangement.spacedBy(Space.md)
     ) {
-        if (totalExpense <= 0 || sortedCategories.isEmpty()) {
+
+        item {
+            AppCard(contentPadding = Space.lg) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SummaryFigure("Thu", formatVnd(monthIncome), p.income, Modifier.weight(1f))
+                    Box(Modifier.width(1.dp).height(40.dp).background(p.border))
+                    SummaryFigure("Chi", formatVnd(monthExpense), p.expense, Modifier.weight(1f).padding(start = Space.md))
+                    Box(Modifier.width(1.dp).height(40.dp).background(p.border))
+                    SummaryFigure("Chênh lệch", (if (net > 0) "+" else "") + formatVnd(net), p.textPrimary, Modifier.weight(1f).padding(start = Space.md))
+                }
+            }
+        }
+
+        item {
+            SegmentedTabs(options = listOf("Theo danh mục", "Lịch thu chi"), selected = mode, onSelect = { mode = it })
+        }
+
+        if (mode == 0) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PieChart,
-                            contentDescription = null,
-                            tint = Color.Gray,
-                            modifier = Modifier.size(48.dp)
+                AppCard(contentPadding = Space.lg) {
+                    Text("Chi tiêu theo danh mục", fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = p.textPrimary)
+                    if (shares.isEmpty()) {
+                        EmptyState(
+                            icon = Icons.Default.PieChart,
+                            title = "Chưa có giao dịch tháng này",
+                            body = "Giao dịch mới sẽ tự động cập nhật tại đây.",
+                            actionLabel = "Xem tháng trước",
+                            onAction = { viewModel.selectMonth(offset - 1) }
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Chưa có chi tiêu nào trong tháng này",
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    } else {
+                        Spacer(Modifier.height(Space.lg))
+                        GroupDonut(shares, monthExpense)
+                        Spacer(Modifier.height(Space.lg))
+                        shares.forEachIndexed { i, s ->
+                            if (i > 0) RowDivider()
+                            ShareRow(s, monthExpense)
+                        }
                     }
                 }
             }
         } else {
-            // Donut Canvas Card
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "CƠ CẤU CHI TIÊU THÁNG",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Donut Chart Canvas with Center Hole Text
-                        Box(
-                            modifier = Modifier
-                                .size(240.dp)
-                                .padding(8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            val categoryColors = sortedCategories.mapIndexed { idx, _ ->
-                                REPORT_CHART_COLORS[idx % REPORT_CHART_COLORS.size]
-                            }
-
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val strokeWidth = 36.dp.toPx()
-                                val diameter = size.minDimension - strokeWidth
-                                val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
-                                val arcSize = Size(diameter, diameter)
-
-                                var currentStartAngle = -90f
-
-                                for (i in sortedCategories.indices) {
-                                    val (name, amount) = sortedCategories[i]
-                                    val sweep = ((amount / totalExpense) * 360.0).toFloat()
-                                    val isSelected = selectedCategoryName == name
-                                    val arcStroke = if (isSelected) strokeWidth * 1.25f else strokeWidth
-
-                                    drawArc(
-                                        color = categoryColors[i],
-                                        startAngle = currentStartAngle,
-                                        sweepAngle = (sweep - 2.5f).coerceAtLeast(1.5f), // Clean separator gap
-                                        useCenter = false,
-                                        topLeft = topLeft,
-                                        size = arcSize,
-                                        style = Stroke(width = arcStroke, cap = StrokeCap.Round)
-                                    )
-                                    currentStartAngle += sweep
-                                }
-                            }
-
-                            // Center Info
-                            val focusedIndex = sortedCategories.indexOfFirst { it.first == selectedCategoryName }
-                            val focusedCategory = if (focusedIndex >= 0) sortedCategories[focusedIndex] else null
-                            val focusedColor = if (focusedIndex >= 0) REPORT_CHART_COLORS[focusedIndex % REPORT_CHART_COLORS.size] else MaterialTheme.colorScheme.primary
-
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(horizontal = 24.dp)
-                            ) {
-                                if (focusedCategory != null) {
-                                    val pct = (focusedCategory.second / totalExpense) * 100
-                                    Text(
-                                        text = focusedCategory.first,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = focusedColor,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = formatVnd(focusedCategory.second),
-                                        fontSize = 17.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = focusedColor
-                                    )
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = focusedColor.copy(alpha = 0.15f)
-                                    ) {
-                                        Text(
-                                            text = "${String.format(Locale.getDefault(), "%.1f", pct)}%",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = focusedColor,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                } else {
-                                    Text(
-                                        text = "Tổng chi tiêu",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = formatVnd(totalExpense),
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFFDC2626)
-                                    )
-                                    Text(
-                                        text = "${sortedCategories.size} danh mục",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        if (selectedCategoryName != null) {
-                            Text(
-                                text = "Chạm để xem lại tổng thể ↺",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .clickable { selectedCategoryName = null }
-                                    .padding(4.dp)
-                            )
-                        } else {
-                            Text(
-                                text = "Chạm vào danh mục để xem chi tiết",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
+                FinancialCalendarSection(
+                    displayCalendar = displayCalendar,
+                    transactions = monthTransactions,
+                    monthIncome = monthIncome,
+                    monthExpense = monthExpense,
+                    monthNetSavings = net,
+                    categories = categories,
+                    accounts = accounts
+                )
             }
+        }
 
-            // Categories Breakdown List
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Chi tiết theo danh mục",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                    Text(
-                        text = "${sortedCategories.size} nhóm chi",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            items(sortedCategories.indices.toList()) { idx ->
-                val (catName, amount) = sortedCategories[idx]
-                val cat = categories.firstOrNull { it.name == catName }
-                val pct = if (totalExpense > 0) (amount / totalExpense) * 100 else 0.0
-                val color = REPORT_CHART_COLORS[idx % REPORT_CHART_COLORS.size]
-                val isSelected = selectedCategoryName == catName
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            selectedCategoryName = if (isSelected) null else catName
-                        },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected) color.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
-                    ),
-                    border = if (isSelected) BorderStroke(1.5.dp, color) else null,
-                    elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 3.dp else 1.dp)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(color.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (!cat?.emoji.isNullOrBlank()) {
-                                    Text(text = cat!!.emoji!!, fontSize = 20.sp)
-                                } else {
-                                    CategoryAvatar(
-                                        iconName = cat?.iconName ?: "shopping_cart",
-                                        colorHex = cat?.colorHex ?: "#0A5C36",
-                                        size = 36.dp
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = catName,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                                if (cat?.groupName != null) {
-                                    Text(
-                                        text = cat.groupName,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = formatVnd(amount),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFDC2626)
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = color.copy(alpha = 0.15f)
-                                ) {
-                                    Text(
-                                        text = "${String.format(Locale.getDefault(), "%.1f", pct)}%",
-                                        color = color,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        LinearProgressIndicator(
-                            progress = { (pct / 100).toFloat().coerceIn(0f, 1f) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = color,
-                            trackColor = color.copy(alpha = 0.12f)
-                        )
-
-                        // If expanded, show transactions under this category
-                        val categoryTxs = remember(monthTransactions, cat?.id) {
-                            monthTransactions.filter { it.type == TransactionType.EXPENSE && (it.categoryId == cat?.id || (cat == null && it.categoryId == null)) }
-                        }
-                        AnimatedVisibility(visible = isSelected && categoryTxs.isNotEmpty()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 10.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = "${categoryTxs.size} giao dịch trong tháng:",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = color
-                                )
-                                for (tx in categoryTxs.take(5)) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = if (tx.note.isNotBlank()) tx.note else "Chi tiêu",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                            Text(
-                                                text = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(tx.timestamp)),
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Text(
-                                            text = "-${formatVnd(tx.amount)}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFDC2626)
-                                        )
-                                    }
-                                }
-                            }
-                        }
+        // Budget summary for the same month, with a way into the Budget tab.
+        item {
+            AppCard(onClick = onOpenBudgets, contentPadding = Space.lg) {
+                Text("Ngân sách tháng", fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = p.textPrimary)
+                Spacer(Modifier.height(Space.xs))
+                if (snapshot.totalBudget > 0) {
+                    val ratio = snapshot.totalBudgetSpent / snapshot.totalBudget
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        MoneyText(formatVnd(snapshot.totalBudget), fontSize = TextSize.figure, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text("Đã dùng ${(ratio * 100).roundToInt()}%", fontSize = TextSize.sm, color = thresholdColor(ratio))
                     }
+                    Spacer(Modifier.height(Space.md))
+                    ThresholdBar(ratio)
+                    Spacer(Modifier.height(Space.sm))
+                    MoneyText("${formatVnd(snapshot.totalBudgetSpent)} / ${formatVnd(snapshot.totalBudget)}", fontSize = TextSize.xs, color = p.textSecondary, fontWeight = FontWeight.Normal)
+                } else {
+                    Text("Chưa đặt ngân sách cho tháng này.", fontSize = TextSize.sm, color = p.textSecondary)
                 }
+                Spacer(Modifier.height(Space.sm))
+                Text("Quản lý ngân sách →", fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = p.accent)
             }
         }
     }
 }
 
-// -------------------------------------------------------------
-// 2. FINANCIAL CALENDAR SECTION (LỊCH THU CHI THEO NGÀY)
-// -------------------------------------------------------------
+@Composable
+private fun SummaryFigure(label: String, value: String, color: Color, modifier: Modifier) {
+    Column(modifier) {
+        Text(label, fontSize = TextSize.xs, color = AppPalette.textSecondary)
+        MoneyText(value, fontSize = TextSize.base, color = color)
+    }
+}
+
+/** Donut of spending by category group, each slice in the colour of its group. */
+@Composable
+private fun GroupDonut(shares: List<CategoryShare>, total: Double) {
+    val p = AppPalette
+    val groups = shares.groupBy { it.group }.map { (g, l) -> Triple(g, l.first().color, l.sumOf { it.amount }) }.sortedByDescending { it.third }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(132.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.size(132.dp)) {
+                val stroke = 20.dp.toPx()
+                var start = -90f
+                val gap = if (groups.size > 1) 2f else 0f
+                groups.forEach { (_, color, amount) ->
+                    val sweep = (amount / total * 360f).toFloat()
+                    drawArc(
+                        color = color,
+                        startAngle = start + gap / 2,
+                        sweepAngle = (sweep - gap).coerceAtLeast(0.5f),
+                        useCenter = false,
+                        style = Stroke(width = stroke),
+                        topLeft = Offset(stroke / 2, stroke / 2),
+                        size = Size(size.width - stroke, size.height - stroke)
+                    )
+                    start += sweep
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Tổng chi", fontSize = TextSize.xs, color = p.textSecondary)
+                MoneyText(compactVnd(total), fontSize = TextSize.base, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.width(Space.lg))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            groups.take(5).forEach { (g, color, amount) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(color))
+                    Spacer(Modifier.width(Space.sm))
+                    Text(g, fontSize = TextSize.xs, color = p.textPrimary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${(amount / total * 100).roundToInt()}%", fontSize = TextSize.xs, color = p.textSecondary, style = MoneyStyle, fontWeight = FontWeight.Medium)
+                }
+            }
+            if (groups.size > 5) Text("+${groups.size - 5} nhóm khác", fontSize = TextSize.xs, color = p.textSecondary)
+        }
+    }
+}
+
+@Composable
+private fun ShareRow(s: CategoryShare, total: Double) {
+    val p = AppPalette
+    val ratio = s.amount / total
+    Row(Modifier.fillMaxWidth().padding(vertical = Space.md), verticalAlignment = Alignment.CenterVertically) {
+        IconTile(categoryIcon(s.category), tint = s.color, background = s.color.copy(alpha = 0.14f), size = 36.dp)
+        Spacer(Modifier.width(Space.md))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(s.name, fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = p.textPrimary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                MoneyText(formatVnd(s.amount), fontSize = TextSize.sm)
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ThresholdBar(ratio, color = s.color, height = 5.dp, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(Space.sm))
+                Text("${(ratio * 100).roundToInt()}%", fontSize = TextSize.xs, color = p.textSecondary, style = MoneyStyle, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.width(36.dp), textAlign = TextAlign.End)
+            }
+        }
+    }
+}
+
 
 @Composable
 fun FinancialCalendarSection(

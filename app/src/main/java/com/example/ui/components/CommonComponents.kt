@@ -67,8 +67,13 @@ import java.util.Locale
 
 private val vnFormat = NumberFormat.getNumberInstance(Locale("vi", "VN"))
 
+const val MINUS = "−"
+const val NBSP = " "
+
+/** "1.250.000 ₫" with a no-break space, so the amount and its unit never split across lines. Negative amounts use a real minus sign. */
 fun formatVnd(amount: Double): String {
-    return "${vnFormat.format(amount.toLong())} ₫"
+    val body = vnFormat.format(kotlin.math.abs(amount).toLong())
+    return (if (amount < 0) MINUS else "") + body + NBSP + "₫"
 }
 
 fun parseColorSafe(hex: String, fallback: Color = Color(0xFF0A5C36)): Color {
