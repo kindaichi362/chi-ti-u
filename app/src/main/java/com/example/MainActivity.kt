@@ -60,6 +60,7 @@ import com.example.ui.screens.ScreenAnalytics
 import com.example.ui.screens.ScreenBudgets
 import com.example.ui.screens.ScreenCategories
 import com.example.ui.screens.ScreenDashboard
+import com.example.ui.screens.ScreenDebtsAndGoals
 import com.example.ui.screens.ScreenTransactions
 import com.example.ui.theme.AppleBorder
 import com.example.ui.theme.AppleDarkBackground
@@ -80,8 +81,15 @@ enum class MainDestination(val label: String, val icon: ImageVector, val tag: St
     ADD_TRANSACTION("Thêm", Icons.Default.Add, "tab_add"),
     AI_ASSISTANT("Trợ lý AI", Icons.Default.Add, "tab_ai"),
     ACCOUNTS("Tài khoản", Icons.Default.Add, "tab_accounts"),
+    PLANS("Kế hoạch", Icons.Default.Add, "tab_plans"),
     CATEGORIES("Danh mục", Icons.Default.Category, "tab_categories")
 }
+
+private val BOTTOM_TABS = setOf(
+    MainDestination.TRANSACTIONS,
+    MainDestination.ANALYTICS,
+    MainDestination.BUDGETS
+)
 
 class MainActivity : ComponentActivity() {
 
@@ -110,6 +118,12 @@ fun MainAppScreen(viewModel: FinanceViewModel) {
         if (dest == MainDestination.DASHBOARD) {
             backStack.clear()
             backStack.add(MainDestination.DASHBOARD)
+        } else if (dest in BOTTOM_TABS) {
+            // Switching bottom tabs replaces the stack, so Back always goes tab → Home → exit
+            // instead of replaying every tab the user tapped through.
+            backStack.clear()
+            backStack.add(MainDestination.DASHBOARD)
+            backStack.add(dest)
         } else {
             if (backStack.lastOrNull() != dest) {
                 backStack.add(dest)
@@ -271,6 +285,7 @@ fun MainAppScreen(viewModel: FinanceViewModel) {
                     onNavigateToAiAssistant = { navigateTo(MainDestination.AI_ASSISTANT) },
                     onNavigateToAnalytics = { navigateTo(MainDestination.ANALYTICS) },
                     onNavigateToCategories = { navigateTo(MainDestination.CATEGORIES) },
+                    onNavigateToPlans = { navigateTo(MainDestination.PLANS) },
                     modifier = Modifier.padding(innerPadding)
                 )
             }
@@ -309,6 +324,13 @@ fun MainAppScreen(viewModel: FinanceViewModel) {
                 ScreenAccounts(
                     viewModel = viewModel,
                     onNavigateBack = { navigateBack() }
+                )
+            }
+            MainDestination.PLANS -> {
+                ScreenDebtsAndGoals(
+                    viewModel = viewModel,
+                    onNavigateBack = { navigateBack() },
+                    modifier = Modifier.padding(innerPadding)
                 )
             }
             MainDestination.CATEGORIES -> {

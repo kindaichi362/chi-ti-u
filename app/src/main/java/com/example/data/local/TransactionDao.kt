@@ -18,6 +18,12 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE timestamp >= :startTime AND timestamp <= :endTime ORDER BY timestamp DESC")
     fun getTransactionsInRange(startTime: Long, endTime: Long): Flow<List<Transaction>>
 
+    @Query("SELECT COUNT(*) FROM transactions WHERE sourceAccountId = :accountId OR destinationAccountId = :accountId")
+    suspend fun countTransactionsForAccount(accountId: Long): Int
+
+    @Query("SELECT * FROM transactions WHERE sourceAccountId = :accountId OR destinationAccountId = :accountId ORDER BY timestamp DESC")
+    suspend fun getTransactionsForAccountOnce(accountId: Long): List<Transaction>
+
     @Query("SELECT * FROM transactions WHERE id = :id LIMIT 1")
     suspend fun getTransactionById(id: Long): Transaction?
 

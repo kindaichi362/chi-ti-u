@@ -596,6 +596,16 @@ fun ConfirmDetailsStepContent(
                     }
                 }
 
+                if (!qr.crcValid) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "⚠️ Mã QR không khớp checksum — có thể bị hỏng hoặc đã bị sửa. Hãy kiểm tra kỹ số tài khoản và số tiền trước khi chuyển.",
+                        fontSize = 12.sp,
+                        color = AppleRed,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // Bank Name & Icon

@@ -18,12 +18,19 @@ import com.example.data.model.PaymentStatus
 import com.example.data.model.RecurringBill
 import com.example.data.model.Transaction
 import com.example.data.model.TransactionType
+import com.example.data.model.countsInReports
 import com.example.data.repository.FinanceRepository
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -33,97 +40,54 @@ import java.util.Locale
 
 class FinanceViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val database = AppDatabase.getDatabase(application, viewModelScope)
-    val repository = FinanceRepository(
-        accountDao = database.accountDao(),
-        categoryDao = database.categoryDao(),
-        transactionDao = database.transactionDao(),
-        budgetDao = database.budgetDao(),
-        debtDao = database.debtDao(),
-        goalDao = database.goalDao(),
-        recurringBillDao = database.recurringBillDao()
-    )
+    val repository = FinanceRepository(AppDatabase.getDatabase(application))
+
+    /** "yyyy-MM" of today; re-checked every minute so an app left open rolls over to the new month. */
+    private val currentMonthKey: StateFlow<String> = flow {
+        while (true) {
+            emit(monthKeyOf(System.currentTimeMillis()))
+            delay(60_000)
+        }
+    }.distinctUntilChanged().stateIn(viewModelScope, SharingStarted.Eagerly, monthKeyOf(System.currentTimeMillis()))
 
     init {
-        viewModelScope.launch {
-            // Automatically ensure all 100+ default categories exist in database
-            val existingNames = repository.getAllCategoryNames().toSet()
-            val fullList = com.example.data.local.InitialCategories.getDefaultCategories()
-            val missing = fullList.filter { it.name !in existingNames }
-            if (missing.isNotEmpty()) {
-                repository.insertCategories(missing)
-            }
-        }
+        viewModelScope.launch { repository.ensureSeeded() }
+        // Budgets repeat every month until the user changes them.
+        currentMonthKey.onEach { repository.carryOverBudgets(it) }.launchIn(viewModelScope)
     }
 
-    fun restoreDefaultCategories() {
-        viewModelScope.launch {
-            val fullList = com.example.data.local.InitialCategories.getDefaultCategories()
-            repository.insertCategories(fullList)
-        }
+    /** Re-adds any default categories the user is missing; reports how many were added. */
+    fun restoreDefaultCategories(onDone: (Int) -> Unit = {}) {
+        viewModelScope.launch { onDone(repository.restoreMissingDefaultCategories()) }
     }
 
-    val accounts: StateFlow<List<Account>> = repository.allAccounts.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
-    )
+    private fun <T> Flow<T>.asState(initial: T): StateFlow<T> =
+        stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), initial)
 
-    val categories: StateFlow<List<Category>> = repository.allCategories.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
-    )
+    val accounts: StateFlow<List<Account>> = repository.allAccounts.asState(emptyList())
+    val categories: StateFlow<List<Category>> = repository.allCategories.asState(emptyList())
+    val transactions: StateFlow<List<Transaction>> = repository.allTransactions.asState(emptyList())
+    val budgets: StateFlow<List<Budget>> = repository.allBudgets.asState(emptyList())
+    val debts: StateFlow<List<Debt>> = repository.allDebts.asState(emptyList())
+    val goals: StateFlow<List<Goal>> = repository.allGoals.asState(emptyList())
+    val bills: StateFlow<List<RecurringBill>> = repository.activeBills.asState(emptyList())
 
-    val transactions: StateFlow<List<Transaction>> = repository.allTransactions.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
-    )
+    /** Only this month's budgets; older months stay in the DB for history but never show as current. */
+    val currentMonthBudgets: StateFlow<List<Budget>> = combine(budgets, currentMonthKey) { all, month ->
+        all.filter { it.monthYear == month }
+    }.asState(emptyList())
 
-    val budgets: StateFlow<List<Budget>> = repository.allBudgets.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
-    )
-
-    val debts: StateFlow<List<Debt>> = repository.allDebts.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
-    )
-
-    val goals: StateFlow<List<Goal>> = repository.allGoals.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
-    )
-
-    val bills: StateFlow<List<RecurringBill>> = repository.activeBills.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
-    )
-
-    // Current month timestamp boundaries
-    private fun getMonthRange(): Pair<Long, Long> {
-        val calendar = Calendar.getInstance()
-        calendar.set(Calendar.DAY_OF_MONTH, 1)
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        val start = calendar.timeInMillis
-
-        calendar.add(Calendar.MONTH, 1)
-        calendar.add(Calendar.MILLISECOND, -1)
-        val end = calendar.timeInMillis
-        return Pair(start, end)
-    }
-
-    val currentMonthTransactions: StateFlow<List<Transaction>> = transactions.combine(
-        MutableStateFlow(Unit)
-    ) { txs, _ ->
-        val (start, end) = getMonthRange()
-        txs.filter { it.timestamp in start..end }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /** This month's transactions that actually moved money (pending / cancelled QR payments excluded). */
+    val currentMonthTransactions: StateFlow<List<Transaction>> = combine(transactions, currentMonthKey) { txs, month ->
+        txs.filter { it.countsInReports && monthKeyOf(it.timestamp) == month }
+    }.asState(emptyList())
 
     val financialSnapshot: StateFlow<FinancialSnapshot> = combine(
         combine(accounts, categories, currentMonthTransactions) { a, c, t -> Triple(a, c, t) },
-        combine(budgets, goals, debts) { b, g, d -> Triple(b, g, d) }
+        combine(currentMonthBudgets, goals, debts) { b, g, d -> Triple(b, g, d) }
     ) { (accs, cats, txs), (bdgs, gls, dbts) ->
         FinancialAdvisorEngine.computeSnapshot(accs, cats, txs, bdgs, gls, dbts)
-    }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
-        FinancialAdvisorEngine.computeSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
-    )
+    }.asState(FinancialAdvisorEngine.computeSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
 
     fun parseNaturalLanguage(input: String): ParsedTransaction? {
         return VietnameseNlpParser.parse(input, accounts.value, categories.value)
@@ -161,6 +125,11 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 )
             )
         }
+    }
+
+    /** Saves an edited transaction; account balances are recomputed from the old and new values. */
+    fun updateTransaction(transaction: Transaction) {
+        viewModelScope.launch { repository.updateTransaction(transaction) }
     }
 
     private val _activePendingPaymentId = MutableStateFlow<Long?>(null)
@@ -242,7 +211,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     iconName = iconName,
                     colorHex = colorHex,
                     emoji = emoji,
-                    parentId = parentId
+                    parentId = parentId,
+                    isDefault = false
                 )
             )
         }
@@ -272,15 +242,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun deleteAccount(account: Account) {
+    /** [onResult] gets false when the account has history and was kept (archive it instead). */
+    fun deleteAccountById(id: Long, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            repository.deleteAccountById(account.id)
-        }
-    }
-
-    fun deleteAccountById(id: Long) {
-        viewModelScope.launch {
-            repository.deleteAccountById(id)
+            onResult(repository.deleteAccountById(id))
         }
     }
 
@@ -297,15 +262,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun addBudget(categoryId: Long, amountLimit: Double) {
-        val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
         viewModelScope.launch {
-            repository.insertBudget(
-                Budget(
-                    categoryId = categoryId,
-                    amountLimit = amountLimit,
-                    monthYear = currentMonth
-                )
-            )
+            repository.upsertBudget(categoryId, amountLimit, currentMonthKey.value)
         }
     }
 
@@ -346,6 +304,28 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** Creates a monthly bill due on [dayOfMonth] (clamped for short months). */
+    fun addBill(name: String, amount: Double, accountId: Long, categoryId: Long, dayOfMonth: Int) {
+        viewModelScope.launch {
+            val now = Calendar.getInstance()
+            val due = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 9)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                set(Calendar.DAY_OF_MONTH, dayOfMonth.coerceIn(1, getActualMaximum(Calendar.DAY_OF_MONTH)))
+            }
+            val firstDue = if (due.before(now)) FinanceRepository.nextDueDateAfter(due.timeInMillis, dayOfMonth) else due.timeInMillis
+            repository.insertBill(
+                RecurringBill(name = name, amount = amount, accountId = accountId, categoryId = categoryId, dayOfMonth = dayOfMonth, nextDueDate = firstDue)
+            )
+        }
+    }
+
+    fun deleteBill(bill: RecurringBill) {
+        viewModelScope.launch { repository.deleteBill(bill) }
+    }
+
     fun payBill(bill: RecurringBill) {
         viewModelScope.launch {
             repository.payBill(bill)
@@ -354,5 +334,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     fun askAiAssistant(query: String): String {
         return FinancialAdvisorEngine.answerQuery(query, financialSnapshot.value)
+    }
+
+    companion object {
+        fun monthKeyOf(timestamp: Long): String = SimpleDateFormat("yyyy-MM", Locale.US).format(Date(timestamp))
     }
 }

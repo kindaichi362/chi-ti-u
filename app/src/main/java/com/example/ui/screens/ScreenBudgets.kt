@@ -68,7 +68,7 @@ fun ScreenBudgets(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val budgets by viewModel.budgets.collectAsState()
+    val budgets by viewModel.currentMonthBudgets.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val snapshot by viewModel.financialSnapshot.collectAsState()
 

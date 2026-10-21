@@ -33,7 +33,10 @@ data class VoiceTransactionDraft(
     val hasAccount: Boolean = false
 ) {
     val isComplete: Boolean
-        get() = hasAmount && hasCategory && hasAccount && (amount != null && amount > 0) && (categoryId != null) && (accountId != null)
+        get() = hasAmount && hasAccount && (amount != null && amount > 0) && (accountId != null) &&
+            // Transfers have no category; they need a different destination account instead.
+            if (type == TransactionType.TRANSFER) destinationAccountId != null && destinationAccountId != accountId
+            else hasCategory && categoryId != null
 
     fun toJsonString(): String {
         return """
@@ -181,23 +184,13 @@ object VoiceTransactionEngine {
         val amount = extractedAmount ?: previousDraft?.amount
         val hasAmount = extractedAmount != null || (previousDraft?.hasAmount == true && amount != null && amount > 0)
 
-        // 2. Transaction Type Detection
-        val isTransfer = lower.contains("chuyển") || lower.contains("rút tiền") ||
-                lower.contains("bắn sang") || lower.contains("sang ví") ||
-                unaccented.contains("chuyen") || unaccented.contains("rut tien") ||
-                (lower.contains("sang") && !lower.contains("sáng") && !unaccented.contains("xang"))
-        val isIncome = !isTransfer && (
-                lower.contains("lương") || lower.contains("thưởng") ||
-                lower.contains("trả tôi") || lower.contains("thu nợ") ||
-                lower.contains("nhận") || lower.contains("thu vào") ||
-                lower.contains("được cho") || lower.contains("bán") ||
-                lower.contains("lãi") || unaccented.contains("luong") || unaccented.contains("thuong")
-        )
-        val type = when {
-            isTransfer -> TransactionType.TRANSFER
-            isIncome -> TransactionType.INCOME
-            else -> TransactionType.EXPENSE
+        // 2. Transaction Type Detection. A transfer needs both accounts named ("rút VCB sang tiền mặt");
+        // otherwise it is treated as spending from the named account instead of moving money to a guess.
+        val mentionedAccounts = VnText.matchAccountsInOrder(text, accounts)
+        val type = VnText.detectType(text).let {
+            if (it == TransactionType.TRANSFER && mentionedAccounts.size < 2) TransactionType.EXPENSE else it
         }
+        val destinationAccount = if (type == TransactionType.TRANSFER) mentionedAccounts[1] else null
 
         // 3. Category Evaluation (Element 2/3) - Priority for Fuel/Transportation
         val matchedCategoryResult = evaluateCategoryDetailed(lower, unaccented, type, categories)
@@ -226,8 +219,8 @@ object VoiceTransactionEngine {
             accountId = accountId,
             accountName = accountName,
             bankId = bankId,
-            destinationAccountId = null,
-            destinationAccountName = null,
+            destinationAccountId = destinationAccount?.id,
+            destinationAccountName = destinationAccount?.name,
             date = todayStr,
             note = note.ifBlank { categoryName ?: "Chi tiêu" },
             confidence = confidence,
@@ -238,248 +231,21 @@ object VoiceTransactionEngine {
         )
     }
 
-    private fun extractAmount(text: String): Double? {
-        val lower = text.lowercase(Locale.ROOT)
-        val unaccented = unaccent(text)
+    // Amount, account and category rules are shared with the typed parser so both inputs agree.
+    private fun extractAmount(text: String): Double? = VnText.extractAmount(text)?.takeIf { it > 0 }
 
-        // 1. e.g. "50 nghìn", "50 ngàn", "50k", "50.5k", "50 nghin", "50 ngan"
-        val kRegex = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:k|nghìn|ngàn|nghin|ngan)", Pattern.CASE_INSENSITIVE)
-        val kMatcher = kRegex.matcher(lower)
-        if (kMatcher.find()) {
-            val numStr = kMatcher.group(1)?.replace(',', '.') ?: "0"
-            return numStr.toDoubleOrNull()?.times(1000.0)
-        }
+    private fun matchAccount(text: String, accounts: List<Account>): Account? =
+        VnText.matchAccountsInOrder(text, accounts).firstOrNull()
 
-        // 2. e.g. "30 triệu", "5 tr", "2 củ", "2 cu", "30 trieu"
-        val trRegex = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:tr|triệu|trieu|củ|cu)", Pattern.CASE_INSENSITIVE)
-        val trMatcher = trRegex.matcher(lower)
-        if (trMatcher.find()) {
-            val numStr = trMatcher.group(1)?.replace(',', '.') ?: "0"
-            return numStr.toDoubleOrNull()?.times(1000000.0)
-        }
-
-        // 3. e.g. "5 lít", "5 lit" (= 500k)
-        val litRegex = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:lít|lit)", Pattern.CASE_INSENSITIVE)
-        val litMatcher = litRegex.matcher(lower)
-        if (litMatcher.find()) {
-            val numStr = litMatcher.group(1)?.replace(',', '.') ?: "0"
-            return numStr.toDoubleOrNull()?.times(100000.0)
-        }
-
-        // 4. Formatted number e.g. 50.000 or 50000
-        val numRegex = Pattern.compile("(?:^|\\s)([0-9]{1,3}(?:\\.[0-9]{3})+|[0-9]{4,10})(?:\\s*₫|\\s*đ|\\s*d)?(?:\\s|$)", Pattern.CASE_INSENSITIVE)
-        val numMatcher = numRegex.matcher(lower)
-        if (numMatcher.find()) {
-            val raw = numMatcher.group(1)?.replace(".", "") ?: "0"
-            return raw.toDoubleOrNull()
-        }
-
-        // 5. Standalone number e.g. "Ăn sáng 35", "Đổ xăng 70"
-        val standaloneRegex = Pattern.compile("\\b(\\d{2,3})\\b")
-        val standaloneMatcher = standaloneRegex.matcher(lower)
-        if (standaloneMatcher.find()) {
-            val num = standaloneMatcher.group(1)?.toDoubleOrNull() ?: 0.0
-            if (num in 10.0..999.0) {
-                return num * 1000.0
-            }
-        }
-
-        return null
-    }
-
-    private fun matchAccount(text: String, accounts: List<Account>): Account? {
-        val lower = text.lowercase(Locale.ROOT)
-        val unaccented = unaccent(text)
-
-        for (acc in accounts) {
-            val nameLower = acc.name.lowercase(Locale.ROOT)
-            val nameUnaccented = unaccent(acc.name)
-            val codeLower = acc.bankCode?.lowercase(Locale.ROOT) ?: ""
-            val bankIdLower = acc.bankId?.lowercase(Locale.ROOT) ?: ""
-
-            val isCash = acc.type == AccountType.CASH && (
-                    lower.contains("tiền mặt") || unaccented.contains("tien mat") ||
-                    lower.contains("ví tiền") || unaccented.contains("vi tien") ||
-                    lower.contains("trong ví") || unaccented.contains("trong vi") ||
-                    lower.contains("ví") || unaccented.contains("vi")
-            )
-
-            val isVcb = (codeLower == "vcb" || bankIdLower == "vcb") && (
-                    lower.contains("vcb") || lower.contains("vietcom") || unaccented.contains("vietcom")
-            )
-
-            val isTcb = (codeLower == "tcb" || bankIdLower == "tcb") && (
-                    lower.contains("tcb") || lower.contains("techcom") || unaccented.contains("techcom") || lower.contains("tech")
-            )
-
-            val isMb = (codeLower == "mb" || bankIdLower == "mb" || codeLower == "mbbank") && (
-                    lower.contains("mb bank") || lower.contains("mbbank") || unaccented.contains("mb bank") ||
-                    (lower.contains("mb") && !lower.contains("mua"))
-            )
-
-            val isMomo = (codeLower == "momo" || bankIdLower == "momo") && lower.contains("momo")
-
-            val isBidv = (codeLower == "bidv" || bankIdLower == "bidv") && lower.contains("bidv")
-            val isAcb = (codeLower == "acb" || bankIdLower == "acb") && lower.contains("acb")
-            val isVp = (codeLower == "vpbank" || bankIdLower == "vpb") && (lower.contains("vp") || lower.contains("cake"))
-
-            val nameMatch = lower.contains(nameLower) || unaccented.contains(nameUnaccented)
-
-            if (isCash || isVcb || isTcb || isMb || isMomo || isBidv || isAcb || isVp || nameMatch) {
-                return acc
-            }
-        }
-        return null
-    }
-
+    @Suppress("UNUSED_PARAMETER")
     private fun evaluateCategoryDetailed(
         lower: String,
         unaccented: String,
         type: TransactionType,
         categories: List<Category>
-    ): Pair<Category, Float>? {
-        val targetCategories = categories.filter {
-            if (type == TransactionType.INCOME) it.type == CategoryType.INCOME else it.type == CategoryType.EXPENSE
-        }
+    ): Pair<Category, Float>? =
+        VietnameseNlpParser.matchCategory(lower, type, categories)?.let { it to 0.97f }
 
-        // 0. Direct match against specific category names (Prioritize longest match e.g. "Ăn sáng", "Quần áo", "Cà phê", "Trà sữa")
-        val sortedTargets = targetCategories.sortedByDescending { it.name.length }
-        for (cat in sortedTargets) {
-            val catUnaccent = unaccent(cat.name).replace("/", " ").trim()
-            val catLower = cat.name.lowercase(Locale.ROOT)
-            val parts = catUnaccent.split(" ").filter { it.length > 2 }
-            if (catUnaccent.length >= 4 && (unaccented.contains(catUnaccent) || lower.contains(catLower))) {
-                return Pair(cat, 0.99f)
-            }
-        }
-
-        // 1. FUEL / TRANSPORTATION KEYWORDS (Fixing "đỏ xăng", "đổ xăng", "xăng xe" - NEVER default to Ăn uống!)
-        val fuelKeywords = listOf(
-            "đỏ xăng", "đổ xăng", "đo xăng", "đỗ xăng", "đồ xăng", "đọ xăng", "tiền xăng", "xăng xe", "xăng",
-            "bơm xăng", "nạp xăng", "mua xăng", "cây xăng", "petrolimex", "pvoil", "pv oil", "dầu nhớt", "thay nhớt",
-            "thay dầu", "nhớt xe", "nhớt", "rửa xe", "gửi xe", "vé gửi xe", "sửa xe", "vá xe", "vá lốp", "thay lốp",
-            "bảo dưỡng xe", "bảo dưỡng", "cứu hộ xe", "đăng kiểm", "phí bot", "cầu đường", "vé cầu đường", "trạm bot",
-            "vetc", "epass",
-            // Unaccented
-            "do xang", "xang xe", "xang", "bom xang", "nap xang", "cay xang", "mua xang", "tien xang", "thay nhot",
-            "nhot", "dau nhot", "rua xe", "gui xe", "sua xe", "va xe", "phi bot"
-        )
-        for (kw in fuelKeywords) {
-            if (lower.contains(kw) || unaccented.contains(kw) || lower.split(" ").contains(kw) || unaccented.split(" ").contains(kw)) {
-                // Find "Xăng xe" with priority
-                val gasCat = targetCategories.firstOrNull {
-                    val n = unaccent(it.name)
-                    n.contains("xang")
-                } ?: targetCategories.firstOrNull {
-                    val n = unaccent(it.name)
-                    n.contains("xe") || n.contains("di chuyen") || n.contains("di lai")
-                } ?: targetCategories.firstOrNull { it.id == 2L }
-                ?: Category(
-                    id = 2L,
-                    name = "Xăng xe",
-                    type = CategoryType.EXPENSE,
-                    iconName = "local_gas_station",
-                    colorHex = "#F97316",
-                    emoji = "⛽",
-                    displayOrder = 2
-                )
-                return Pair(gasCat, 0.99f)
-            }
-        }
-
-        // 2. RIDE-HAILING / TAXI / TRAVEL
-        val travelKeywords = listOf(
-            "grab", "be", "gojek", "xanh sm", "taxi", "mai linh", "vinasun", "vé xe", "xe bus", "xe buýt",
-            "vé tàu", "tàu hỏa", "máy bay", "vé máy bay", "vietjet", "vietnam airlines", "xe ôm",
-            "ve xe", "may bay", "xe om"
-        )
-        for (kw in travelKeywords) {
-            if (lower.contains(kw) || unaccented.contains(kw)) {
-                val travelCat = targetCategories.firstOrNull {
-                    val n = unaccent(it.name)
-                    n.contains("di lai") || n.contains("du lich") || n.contains("xang")
-                }
-                if (travelCat != null) return Pair(travelCat, 0.98f)
-            }
-        }
-
-        // 3. FOOD & DINING KEYWORDS
-        val foodKeywords = listOf(
-            "ăn sáng", "ăn trưa", "ăn tối", "ăn", "phở", "cơm", "bún", "bánh mì", "lẩu", "nướng",
-            "hủ tiếu", "gỏi cuốn", "mì tôm", "cháo", "bánh cuốn", "nem", "ốc", "bánh xèo", "hải sản",
-            "cà phê", "cafe", "coffee", "trà sữa", "nước ép", "sinh tố", "highlands", "starbucks", "phúc long",
-            "an sang", "an trua", "an toi", "an", "pho", "com", "bun", "banh mi", "lau", "nuong", "ca phe", "tra sua"
-        )
-        for (kw in foodKeywords) {
-            if (lower.contains(kw) || unaccented.contains(kw)) {
-                val foodCat = targetCategories.firstOrNull {
-                    val n = unaccent(it.name)
-                    n.contains("an uong") || n.contains("an")
-                }
-                if (foodCat != null) return Pair(foodCat, 0.97f)
-            }
-        }
-
-        // 4. SHOPPING
-        val shopKeywords = listOf(
-            "mua sắm", "quần áo", "giày", "dép", "shopee", "lazada", "tiki", "mỹ phẩm", "son",
-            "mua do", "quan ao", "giay", "dep", "mua sam", "my pham"
-        )
-        for (kw in shopKeywords) {
-            if (lower.contains(kw) || unaccented.contains(kw)) {
-                val shopCat = targetCategories.firstOrNull { unaccent(it.name).contains("mua sam") }
-                if (shopCat != null) return Pair(shopCat, 0.97f)
-            }
-        }
-
-        // 5. BILLS & UTILITIES
-        val billKeywords = listOf(
-            "tiền điện", "tiền nước", "evn", "điện nước", "tiền wifi", "internet", "cước", "nạp thẻ", "tiền rác",
-            "tien dien", "tien nuoc", "dien nuoc", "tien wifi"
-        )
-        for (kw in billKeywords) {
-            if (lower.contains(kw) || unaccented.contains(kw)) {
-                val billCat = targetCategories.firstOrNull {
-                    val n = unaccent(it.name)
-                    n.contains("dien nuoc") || n.contains("hoa don") || n.contains("dien thoai")
-                }
-                if (billCat != null) return Pair(billCat, 0.97f)
-            }
-        }
-
-        // 6. HEALTHCARE
-        val healthKeywords = listOf("thuốc", "bệnh viện", "khám bệnh", "nha khoa", "bác sĩ", "mua thuoc", "kham benh", "benh vien")
-        for (kw in healthKeywords) {
-            if (lower.contains(kw) || unaccented.contains(kw)) {
-                val healthCat = targetCategories.firstOrNull { unaccent(it.name).contains("suc khoe") }
-                if (healthCat != null) return Pair(healthCat, 0.97f)
-            }
-        }
-
-        // 7. ENTERTAINMENT
-        val entKeywords = listOf("xem phim", "cinema", "cgv", "netflix", "spotify", "karaoke", "chơi game", "xem phim", "choi game")
-        for (kw in entKeywords) {
-            if (lower.contains(kw) || unaccented.contains(kw)) {
-                val entCat = targetCategories.firstOrNull { unaccent(it.name).contains("giai tri") }
-                if (entCat != null) return Pair(entCat, 0.97f)
-            }
-        }
-
-        // 8. SALARY & INCOME
-        val incomeKeywords = listOf("lương", "nhận lương", "bắn lương", "lương tháng", "thưởng", "hoa hồng", "luong", "thuong")
-        for (kw in incomeKeywords) {
-            if (lower.contains(kw) || unaccented.contains(kw)) {
-                val incCat = targetCategories.firstOrNull {
-                    val n = unaccent(it.name)
-                    n.contains("luong") || n.contains("thuong") || n.contains("thu nhap")
-                }
-                if (incCat != null) return Pair(incCat, 0.98f)
-            }
-        }
-
-        // If no keyword match, DO NOT guess or default to food! Return null so user sees picker!
-        return null
-    }
 
     private fun matchCategory(
         text: String,

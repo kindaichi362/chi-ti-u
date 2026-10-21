@@ -14,6 +14,9 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE isArchived = 0 ORDER BY id ASC")
     fun getAllAccounts(): Flow<List<Account>>
 
+    @Query("SELECT COUNT(*) FROM accounts")
+    suspend fun getAccountCount(): Int
+
     @Query("SELECT * FROM accounts WHERE id = :id LIMIT 1")
     suspend fun getAccountById(id: Long): Account?
 

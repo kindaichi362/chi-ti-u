@@ -2,6 +2,7 @@ package com.example.data.model
 
 import androidx.room.Entity
 import androidx.room.Ignore
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class TransactionType(val displayName: String) {
@@ -17,7 +18,10 @@ enum class PaymentStatus(val displayName: String) {
     CANCELLED("Đã hủy")
 }
 
-@Entity(tableName = "transactions")
+@Entity(
+    tableName = "transactions",
+    indices = [Index("timestamp"), Index("sourceAccountId"), Index("destinationAccountId"), Index("categoryId")]
+)
 data class Transaction(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
@@ -39,3 +43,10 @@ data class Transaction(
     @get:Ignore
     val date: Long get() = timestamp
 }
+
+/**
+ * True when the transaction really moved money and belongs in income/expense reports:
+ * pending or cancelled QR payments are excluded.
+ */
+val Transaction.countsInReports: Boolean
+    get() = paymentStatus == PaymentStatus.PAID

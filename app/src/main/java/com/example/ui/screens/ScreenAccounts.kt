@@ -123,7 +123,7 @@ fun ScreenAccounts(
                         color = AppleTextPrimary
                     )
                     Text(
-                        text = "• Xóa vĩnh viễn: Gỡ bỏ tài khoản hoàn toàn khỏi hệ thống.\n• Ngừng sử dụng: Ẩn tài khoản khỏi danh sách nhưng lưu giữ lịch sử.",
+                        text = "• Xóa vĩnh viễn: chỉ áp dụng cho tài khoản chưa có giao dịch nào.\n• Ngừng sử dụng: Ẩn tài khoản khỏi danh sách nhưng lưu giữ lịch sử.",
                         fontSize = 12.sp,
                         color = AppleTextSecondary
                     )
@@ -143,8 +143,14 @@ fun ScreenAccounts(
                     }
                     Button(
                         onClick = {
-                            viewModel.deleteAccountById(target.id)
-                            Toast.makeText(context, "Đã xóa tài khoản: ${target.name}", Toast.LENGTH_SHORT).show()
+                            viewModel.deleteAccountById(target.id) { deleted ->
+                                val msg = if (deleted) {
+                                    "Đã xóa tài khoản: ${target.name}"
+                                } else {
+                                    "\"${target.name}\" đã có giao dịch nên không thể xóa hẳn. Hãy chọn \"Ngừng dùng\" để giữ lịch sử."
+                                }
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
                             accountToDelete = null
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = AppleRed)

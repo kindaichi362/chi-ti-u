@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowForward
@@ -64,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -114,6 +116,7 @@ fun ScreenDashboard(
     onNavigateToAiAssistant: () -> Unit,
     onNavigateToAnalytics: () -> Unit = {},
     onNavigateToCategories: () -> Unit = {},
+    onNavigateToPlans: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val snapshot by viewModel.financialSnapshot.collectAsState()
@@ -648,6 +651,43 @@ fun ScreenDashboard(
             }
         }
 
+        // 5b. Entry to debts, savings goals and recurring bills
+        item {
+            val debts by viewModel.debts.collectAsState()
+            val openDebts = debts.count { !it.isSettled }
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToPlans() }
+                    .testTag("card_plans"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = AppleSurface1),
+                border = BorderStroke(1.dp, AppleBorder)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "📒", fontSize = 22.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Sổ nợ, Mục tiêu & Hóa đơn", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = AppleTextPrimary)
+                        Text(
+                            text = "$openDebts khoản nợ đang mở • ${bills.size} hóa đơn định kỳ",
+                            fontSize = 12.sp,
+                            color = AppleTextSecondary
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = AppleTextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
         // 6. Budget Warning Banner
         if (snapshot.exceededBudgets.isNotEmpty()) {
             item {
@@ -1109,20 +1149,22 @@ fun TransactionDashboardItem(
                     else -> AppleTextPrimary
                 }
 
+                val isCancelled = transaction.paymentStatus == PaymentStatus.CANCELLED
                 Text(
                     text = "$amountPrefix${formatVnd(transaction.amount)}",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    color = amountColor
+                    color = if (isCancelled) AppleTextSecondary else amountColor,
+                    textDecoration = if (isCancelled) TextDecoration.LineThrough else null
                 )
 
-                if (transaction.paymentStatus == PaymentStatus.PENDING_PAYMENT) {
+                if (transaction.paymentStatus != PaymentStatus.PAID) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Chờ QR",
+                        text = if (isCancelled) "Đã hủy" else "Chờ QR",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = AppleOrange
+                        color = if (isCancelled) AppleTextSecondary else AppleOrange
                     )
                 }
             }

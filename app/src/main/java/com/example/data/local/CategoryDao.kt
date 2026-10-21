@@ -27,6 +27,9 @@ interface CategoryDao {
     @Query("SELECT * FROM categories WHERE id = :id LIMIT 1")
     suspend fun getCategoryById(id: Long): Category?
 
+    @Query("SELECT * FROM categories")
+    suspend fun getAllCategoriesOnce(): List<Category>
+
     @Query("SELECT COUNT(*) FROM categories")
     suspend fun getCategoryCount(): Int
 

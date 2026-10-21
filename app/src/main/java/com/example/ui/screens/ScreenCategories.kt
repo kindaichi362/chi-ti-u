@@ -72,6 +72,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Category
 import com.example.data.model.CategoryType
+import com.example.data.model.TransactionType
+import com.example.data.model.countsInReports
 import com.example.ui.components.CategoryIconBadge
 import com.example.ui.components.formatVnd
 import com.example.ui.components.parseColorSafe
@@ -127,17 +129,25 @@ fun ScreenCategories(
     )
 
     // Calculate spent per category
-    val currentMonth = java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.getDefault()).format(java.util.Date())
-    val monthlyTxs = transactions.filter {
-        val txMonth = java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.getDefault()).format(java.util.Date(it.date))
-        txMonth == currentMonth
+    val currentMonth = FinanceViewModel.monthKeyOf(System.currentTimeMillis())
+    // Totals per category computed once per data change instead of scanning every transaction
+    // for every row. Only money that really moved counts: transfers, balance adjustments and
+    // pending/cancelled QR payments are excluded.
+    val spentByCategory = remember(transactions, currentMonth) {
+        transactions
+            .filter {
+                it.countsInReports && it.categoryId != null &&
+                    (it.type == TransactionType.EXPENSE || it.type == TransactionType.INCOME) &&
+                    FinanceViewModel.monthKeyOf(it.timestamp) == currentMonth
+            }
+            .groupBy { it.categoryId!! }
+            .mapValues { (_, txs) -> txs.sumOf { it.amount } }
     }
 
     fun getCategorySpent(catId: Long): Double {
         // sum direct txs + subcategory txs
         val subCatIds = categories.filter { it.parentId == catId }.map { it.id }
-        return monthlyTxs.filter { it.categoryId == catId || subCatIds.contains(it.categoryId) }
-            .sumOf { it.amount }
+        return (spentByCategory[catId] ?: 0.0) + subCatIds.sumOf { spentByCategory[it] ?: 0.0 }
     }
 
     fun getCategoryBudget(catId: Long): Double? {
@@ -161,8 +171,10 @@ fun ScreenCategories(
                 actions = {
                     IconButton(
                         onClick = {
-                            viewModel.restoreDefaultCategories()
-                            Toast.makeText(context, "Đã cập nhật toàn bộ 100+ danh mục chuẩn!", Toast.LENGTH_SHORT).show()
+                            viewModel.restoreDefaultCategories { added ->
+                                val msg = if (added > 0) "Đã thêm lại $added danh mục mặc định" else "Đã có đủ danh mục mặc định"
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
                         }
                     ) {
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = "Cập nhật 100+ danh mục", tint = AppleTextSecondary)

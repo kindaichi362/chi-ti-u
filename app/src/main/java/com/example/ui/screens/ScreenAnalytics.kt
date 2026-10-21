@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.Category
 import com.example.data.model.Transaction
 import com.example.data.model.TransactionType
+import com.example.data.model.countsInReports
 import com.example.ui.components.CategoryAvatar
 import com.example.ui.components.TransactionAmountText
 import com.example.ui.components.formatVnd
@@ -150,7 +151,8 @@ fun ScreenAnalytics(
     }
 
     val monthTransactions = remember(transactions, calendarMonthOffset) {
-        transactions.filter { it.timestamp in monthStartTimestamp..monthEndTimestamp }
+        // Pending / cancelled QR payments never moved money, so they stay out of the report.
+        transactions.filter { it.countsInReports && it.timestamp in monthStartTimestamp..monthEndTimestamp }
     }
 
     val monthExpense = monthTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }

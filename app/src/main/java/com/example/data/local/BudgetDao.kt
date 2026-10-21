@@ -17,6 +17,18 @@ interface BudgetDao {
     @Query("SELECT * FROM budgets")
     fun getAllBudgets(): Flow<List<Budget>>
 
+    @Query("SELECT * FROM budgets WHERE monthYear = :monthYear")
+    suspend fun getBudgetsForMonthOnce(monthYear: String): List<Budget>
+
+    @Query("SELECT * FROM budgets WHERE categoryId = :categoryId AND monthYear = :monthYear LIMIT 1")
+    suspend fun getBudgetForCategory(categoryId: Long, monthYear: String): Budget?
+
+    @Query("SELECT COUNT(*) FROM budgets WHERE monthYear = :monthYear")
+    suspend fun countBudgetsForMonth(monthYear: String): Int
+
+    @Query("SELECT MAX(monthYear) FROM budgets WHERE monthYear < :monthYear")
+    suspend fun getLatestMonthBefore(monthYear: String): String?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBudget(budget: Budget): Long
 

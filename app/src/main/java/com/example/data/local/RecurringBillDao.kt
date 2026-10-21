@@ -14,6 +14,9 @@ interface RecurringBillDao {
     @Query("SELECT * FROM recurring_bills WHERE isActive = 1 ORDER BY nextDueDate ASC")
     fun getActiveBills(): Flow<List<RecurringBill>>
 
+    @Query("SELECT COUNT(*) FROM recurring_bills WHERE accountId = :accountId")
+    suspend fun countBillsForAccount(accountId: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBill(bill: RecurringBill): Long
 

@@ -268,8 +268,8 @@ fun ScreenAddTransaction(
                                     Toast.makeText(context, "Vui lòng chọn tài khoản", Toast.LENGTH_SHORT).show()
                                     return@Button
                                 }
-                                if (selectedType == TransactionType.TRANSFER && selectedDestAccountId == null) {
-                                    Toast.makeText(context, "Vui lòng chọn tài khoản đích", Toast.LENGTH_SHORT).show()
+                                if (selectedType == TransactionType.TRANSFER && (selectedDestAccountId == null || selectedDestAccountId == srcId)) {
+                                    Toast.makeText(context, "Vui lòng chọn tài khoản đích khác tài khoản nguồn", Toast.LENGTH_SHORT).show()
                                     return@Button
                                 }
                                 viewModel.addTransaction(

@@ -54,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,6 +63,7 @@ import com.example.ai.NaturalQueryResult
 import com.example.data.model.PaymentStatus
 import com.example.data.model.Transaction
 import com.example.data.model.TransactionType
+import com.example.ui.components.EditTransactionDialog
 import com.example.ui.components.BankLogoBadge
 import com.example.ui.components.VoiceTransactionBottomSheet
 import com.example.ui.components.formatVnd
@@ -98,6 +100,7 @@ fun ScreenTransactions(
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilterType by remember { mutableStateOf<TransactionType?>(null) }
     var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
+    var transactionToEdit by remember { mutableStateOf<Transaction?>(null) }
     var showVoiceSheet by remember { mutableStateOf(false) }
 
     // Natural Language Query check
@@ -116,14 +119,17 @@ fun ScreenTransactions(
         }
     }
 
-    val filteredList = remember(searchQuery, selectedFilterType, transactions, naturalResult) {
+    val categoryNames = remember(categories) { categories.associate { it.id to it.name } }
+    val accountNames = remember(accounts) { accounts.associate { it.id to it.name } }
+
+    val filteredList = remember(searchQuery, selectedFilterType, transactions, naturalResult, categoryNames, accountNames) {
         if (naturalResult != null) {
             naturalResult.filteredTransactions
         } else {
             transactions.filter { tx ->
                 val matchesType = selectedFilterType == null || tx.type == selectedFilterType
-                val catName = categories.firstOrNull { it.id == tx.categoryId }?.name ?: ""
-                val accName = accounts.firstOrNull { it.id == tx.sourceAccountId }?.name ?: ""
+                val catName = categoryNames[tx.categoryId] ?: ""
+                val accName = accountNames[tx.sourceAccountId] ?: ""
                 val matchesSearch = searchQuery.isBlank() ||
                         tx.note.contains(searchQuery, ignoreCase = true) ||
                         catName.contains(searchQuery, ignoreCase = true) ||
@@ -133,21 +139,31 @@ fun ScreenTransactions(
         }
     }
 
-    // Group by Date
-    val grouped = filteredList.groupBy { tx ->
-        val cal = Calendar.getInstance()
-        val todayDay = cal.get(Calendar.DAY_OF_YEAR)
-        val todayYear = cal.get(Calendar.YEAR)
-
-        cal.timeInMillis = tx.date
-        val txDay = cal.get(Calendar.DAY_OF_YEAR)
-        val txYear = cal.get(Calendar.YEAR)
-
-        when {
-            todayYear == txYear && todayDay == txDay -> "Hôm nay"
-            todayYear == txYear && todayDay - txDay == 1 -> "Hôm qua"
-            else -> SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(tx.date))
+    // Group by Date (computed once per list change, not on every recomposition)
+    val grouped = remember(filteredList) {
+        val dayFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        val today = dayFormat.format(Date())
+        val yesterday = dayFormat.format(Date(System.currentTimeMillis() - 86_400_000L))
+        filteredList.groupBy { tx ->
+            when (val day = dayFormat.format(Date(tx.date))) {
+                today -> "Hôm nay"
+                yesterday -> "Hôm qua"
+                else -> day
+            }
         }
+    }
+
+    transactionToEdit?.let { editing ->
+        EditTransactionDialog(
+            transaction = editing,
+            accounts = accounts,
+            categories = categories,
+            onDismiss = { transactionToEdit = null },
+            onSave = {
+                viewModel.updateTransaction(it)
+                transactionToEdit = null
+            }
+        )
     }
 
     if (transactionToDelete != null) {
@@ -449,6 +465,8 @@ fun ScreenTransactions(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    // Balance adjustments are corrected by reconciling again, not edited.
+                                    .clickable(enabled = tx.type != TransactionType.ADJUSTMENT) { transactionToEdit = tx }
                                     .testTag("tx_item_${tx.id}"),
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = AppleSurface1),
@@ -525,20 +543,22 @@ fun ScreenTransactions(
                                             else -> AppleTextPrimary
                                         }
 
+                                        val isCancelled = tx.paymentStatus == PaymentStatus.CANCELLED
                                         Text(
                                             text = "$prefix${formatVnd(tx.amount)}",
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 15.sp,
-                                            color = color
+                                            color = if (isCancelled) AppleTextSecondary else color,
+                                            textDecoration = if (isCancelled) TextDecoration.LineThrough else null
                                         )
 
-                                        if (tx.paymentStatus == PaymentStatus.PENDING_PAYMENT) {
+                                        if (tx.paymentStatus != PaymentStatus.PAID) {
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Text(
-                                                text = "Chờ QR",
+                                                text = if (isCancelled) "Đã hủy" else "Chờ QR",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = AppleOrange
+                                                color = if (isCancelled) AppleTextSecondary else AppleOrange
                                             )
                                         }
                                     }

@@ -94,9 +94,12 @@ object VietQrParser {
                 ?: additionalTlvs["01"] // Bill number
         }
 
-        // Checksum Tag 63 (4 chars)
+        // Checksum Tag 63: the CRC covers everything up to and including "6304"; a mismatch means
+        // a damaged or edited QR (e.g. someone changed the amount or account).
         val crc = rootTlvs["63"]
-        val crcValid = !crc.isNullOrBlank()
+        val crcValid = crc != null && crc.length == 4 && payload.length > 8 &&
+            payload.substring(payload.length - 8, payload.length - 4) == "6304" &&
+            computeCrc16(payload.substring(0, payload.length - 4)).equals(crc, ignoreCase = true)
 
         val bank = VietnameseBankRegistry.findByBin(bankBin)
         val bankShortName = bank?.shortName ?: if (bankBin.isNotBlank()) "Ngân hàng ($bankBin)" else "Ngân hàng"
@@ -300,7 +303,7 @@ object VietQrParser {
     private fun computeCrc16(data: String): String {
         var crc = 0xFFFF
         val polynomial = 0x1021
-        val bytes = data.toByteArray(StandardCharsets.ISO_8859_1)
+        val bytes = data.toByteArray(StandardCharsets.UTF_8)
 
         for (b in bytes) {
             for (i in 0 until 8) {
