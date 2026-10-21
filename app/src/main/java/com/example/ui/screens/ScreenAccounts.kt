@@ -2,13 +2,13 @@ package com.example.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,40 +19,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -66,557 +50,563 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.ai.CreditCardStatus
 import com.example.data.model.Account
 import com.example.data.model.AccountType
 import com.example.payment.vietqr.VietnameseBankRegistry
-import com.example.ui.components.AccountTypeBadge
+import com.example.ui.components.AccountLogo
+import com.example.ui.components.AppCard
 import com.example.ui.components.BankLogoBadge
+import com.example.ui.components.Label
+import com.example.ui.components.ListRow
+import com.example.ui.components.RowDivider
+import com.example.ui.components.SectionHeader
+import com.example.ui.components.ThresholdBar
+import com.example.ui.components.compactVnd
 import com.example.ui.components.formatVnd
-import com.example.ui.theme.AppleBorder
-import com.example.ui.theme.AppleGreen
-import com.example.ui.theme.AppleOrange
-import com.example.ui.theme.AppleRed
 import com.example.ui.theme.AppleSurface1
-import com.example.ui.theme.AppleSurface2
-import com.example.ui.theme.AppleSurface3
 import com.example.ui.theme.AppleTextPrimary
 import com.example.ui.theme.AppleTextSecondary
-import com.example.ui.theme.ExpenseRed
-import com.example.ui.theme.IncomeGreen
-import com.example.ui.theme.OledBlack
+import com.example.ui.theme.Radius
+import com.example.ui.theme.Space
+import com.example.ui.theme.TextSize
+import com.example.ui.theme.Tone
 import com.example.ui.viewmodel.FinanceViewModel
+import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val SECTIONS = listOf(
+    "Tiền mặt & ví" to setOf(AccountType.CASH, AccountType.E_WALLET),
+    "Ngân hàng" to setOf(AccountType.BANK, AccountType.SAVINGS, AccountType.INVESTMENT),
+    "Thẻ tín dụng" to setOf(AccountType.CREDIT_CARD),
+    "Khoản vay & khác" to setOf(AccountType.RECEIVABLE, AccountType.PAYABLE, AccountType.LOAN)
+)
+
+private fun parseVnd(text: String): Double = text.filter(Char::isDigit).toDoubleOrNull() ?: 0.0
+
+/** Where the money is: grouped by kind, credit cards with their limit and due date. */
 @Composable
 fun ScreenAccounts(
     viewModel: FinanceViewModel,
-    onNavigateBack: () -> Unit,
+    onOpenPlans: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val accounts by viewModel.accounts.collectAsState()
+    val snapshot by viewModel.financialSnapshot.collectAsState()
+    val cardStatus = snapshot.creditCards.associateBy { it.account.id }
 
-    var showAddAccountDialog by remember { mutableStateOf(false) }
-    var reconcilingAccount by remember { mutableStateOf<Account?>(null) }
-    var accountToDelete by remember { mutableStateOf<Account?>(null) }
-    var newBalanceInput by remember { mutableStateOf("") }
+    var showAdd by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf<Account?>(null) }
+    var reconciling by remember { mutableStateOf<Account?>(null) }
+    var paying by remember { mutableStateOf<Account?>(null) }
+    var editingCard by remember { mutableStateOf<Account?>(null) }
 
-    val totalBalance = accounts.sumOf { it.balance }
+    if (showAdd) {
+        AddAccountDialog(onDismiss = { showAdd = false }) { acc ->
+            viewModel.addAccount(acc)
+            showAdd = false
+            Toast.makeText(context, "Đã thêm ${acc.name}", Toast.LENGTH_SHORT).show()
+        }
+    }
 
-    // Delete Account Confirmation Dialog
-    if (accountToDelete != null) {
-        val target = accountToDelete!!
-        AlertDialog(
-            onDismissRequest = { accountToDelete = null },
-            containerColor = AppleSurface2,
-            title = {
-                Text("Xóa tài khoản", color = AppleTextPrimary, fontWeight = FontWeight.Bold)
+    selected?.let { acc ->
+        AccountActionsDialog(
+            account = acc,
+            onDismiss = { selected = null },
+            onReconcile = { reconciling = acc; selected = null },
+            onPayCard = { paying = acc; selected = null },
+            onEditCard = { editingCard = acc; selected = null },
+            onArchive = {
+                viewModel.archiveAccount(acc.id)
+                Toast.makeText(context, "Đã ẩn ${acc.name}; lịch sử vẫn được giữ", Toast.LENGTH_SHORT).show()
+                selected = null
             },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Bạn muốn xóa tài khoản \"${target.name}\" (Số dư: ${formatVnd(target.balance)})?",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = AppleTextPrimary
-                    )
-                    Text(
-                        text = "• Xóa vĩnh viễn: chỉ áp dụng cho tài khoản chưa có giao dịch nào.\n• Ngừng sử dụng: Ẩn tài khoản khỏi danh sách nhưng lưu giữ lịch sử.",
-                        fontSize = 12.sp,
-                        color = AppleTextSecondary
-                    )
+            onDelete = {
+                viewModel.deleteAccountById(acc.id) { deleted ->
+                    Toast.makeText(
+                        context,
+                        if (deleted) "Đã xóa ${acc.name}" else "\"${acc.name}\" đã có giao dịch nên không xóa hẳn được. Hãy chọn \"Ngừng dùng\".",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
-            },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = {
-                            viewModel.archiveAccount(target.id)
-                            Toast.makeText(context, "Đã ẩn tài khoản: ${target.name}", Toast.LENGTH_SHORT).show()
-                            accountToDelete = null
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = AppleSurface3)
-                    ) {
-                        Text("Ngừng dùng", color = AppleOrange)
-                    }
-                    Button(
-                        onClick = {
-                            viewModel.deleteAccountById(target.id) { deleted ->
-                                val msg = if (deleted) {
-                                    "Đã xóa tài khoản: ${target.name}"
-                                } else {
-                                    "\"${target.name}\" đã có giao dịch nên không thể xóa hẳn. Hãy chọn \"Ngừng dùng\" để giữ lịch sử."
-                                }
-                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                            }
-                            accountToDelete = null
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = AppleRed)
-                    ) {
-                        Text("Xóa hẳn", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { accountToDelete = null }) {
-                    Text("Hủy", color = AppleTextSecondary)
-                }
+                selected = null
             }
         )
     }
 
-    // Reconcile Balance Dialog
-    if (reconcilingAccount != null) {
-        val acc = reconcilingAccount!!
-        AlertDialog(
-            onDismissRequest = { reconcilingAccount = null },
-            containerColor = AppleSurface2,
-            title = {
-                Text("Điều chỉnh số dư: ${acc.name}", color = AppleTextPrimary, fontWeight = FontWeight.Bold)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "Số dư hiện tại trên app: ${formatVnd(acc.balance)}",
-                        fontSize = 13.sp,
-                        color = AppleTextSecondary
-                    )
-                    OutlinedTextField(
-                        value = newBalanceInput,
-                        onValueChange = { newBalanceInput = it },
-                        label = { Text("Số dư thực tế mới (VNĐ)") },
-                        placeholder = { Text("Ví dụ: 1200000") },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("reconcile_balance_input"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AppleOrange,
-                            unfocusedBorderColor = AppleBorder
-                        )
-                    )
-                }
-            },
-            confirmButton = {
+    reconciling?.let { acc ->
+        AmountDialog(
+            title = "Điều chỉnh số dư: ${acc.name}",
+            hint = "Số dư hiện tại trong app: ${formatVnd(acc.balance)}. Nhập số dư thật (âm nếu là nợ).",
+            label = "Số dư thực tế (VNĐ)",
+            allowNegative = true,
+            initial = acc.balance.toLong().toString(),
+            onDismiss = { reconciling = null }
+        ) { value ->
+            viewModel.reconcileAccountBalance(acc.id, value)
+            reconciling = null
+        }
+    }
+
+    paying?.let { card ->
+        PayCardDialog(
+            card = card,
+            debt = (-card.balance).coerceAtLeast(0.0),
+            sources = accounts.filter { it.id != card.id && it.type != AccountType.CREDIT_CARD },
+            onDismiss = { paying = null }
+        ) { fromId, amount ->
+            viewModel.payCreditCard(card.id, fromId, amount)
+            Toast.makeText(context, "Đã ghi nhận trả thẻ ${formatVnd(amount)}", Toast.LENGTH_SHORT).show()
+            paying = null
+        }
+    }
+
+    editingCard?.let { card ->
+        CardSettingsDialog(card = card, onDismiss = { editingCard = null }) { updated ->
+            viewModel.updateAccount(updated)
+            editingCard = null
+        }
+    }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.lg, bottom = Space.xxl),
+        verticalArrangement = Arrangement.spacedBy(Space.lg)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Tài khoản", fontSize = TextSize.xl, fontWeight = FontWeight.Bold, color = AppleTextPrimary, modifier = Modifier.weight(1f))
+                IconButton(onClick = onOpenPlans) { Icon(Icons.Default.EventNote, contentDescription = "Sổ nợ, mục tiêu, hóa đơn", tint = AppleTextSecondary) }
                 Button(
-                    onClick = {
-                        val newBal = newBalanceInput.toDoubleOrNull()
-                        if (newBal == null) {
-                            Toast.makeText(context, "Vui lòng nhập số hợp lệ", Toast.LENGTH_SHORT).show()
-                            return@Button
+                    onClick = { showAdd = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = Tone.accent, contentColor = Color.Black),
+                    contentPadding = PaddingValues(horizontal = Space.md),
+                    modifier = Modifier.height(36.dp).testTag("add_account_button")
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(Space.xs))
+                    Text("Thêm", fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        item {
+            AppCard {
+                Label("Tài sản ròng")
+                Text(formatVnd(snapshot.netWorth), fontSize = TextSize.figure, fontWeight = FontWeight.Bold, color = AppleTextPrimary)
+                Spacer(Modifier.height(Space.md))
+                Row {
+                    Column(Modifier.weight(1f)) {
+                        Label("Tài sản")
+                        Text(compactVnd(snapshot.totalAssets), fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = Tone.income)
+                    }
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                        Label("Nợ (gồm thẻ)")
+                        Text(compactVnd(snapshot.totalLiabilities), fontSize = TextSize.base, fontWeight = FontWeight.SemiBold,
+                            color = if (snapshot.totalLiabilities > 0) Tone.danger else AppleTextPrimary)
+                    }
+                }
+            }
+        }
+
+        for ((title, types) in SECTIONS) {
+            val inSection = accounts.filter { it.type in types }
+            if (inSection.isEmpty()) continue
+            item(key = title) {
+                val total = inSection.sumOf { it.balance }
+                SectionHeader(if (types.contains(AccountType.CREDIT_CARD)) title else "$title · ${compactVnd(total)}")
+                Spacer(Modifier.height(Space.sm))
+                if (types.contains(AccountType.CREDIT_CARD)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
+                        inSection.forEach { card ->
+                            CreditCardTile(card, cardStatus[card.id], onClick = { selected = card }, onPay = { paying = card })
                         }
-                        viewModel.reconcileAccountBalance(acc.id, newBal)
-                        Toast.makeText(context, "Đã cập nhật số dư đối soát!", Toast.LENGTH_SHORT).show()
-                        reconcilingAccount = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = AppleOrange)
-                ) {
-                    Text("Xác nhận", color = Color.Black, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { reconcilingAccount = null }) {
-                    Text("Hủy", color = AppleTextSecondary)
-                }
-            }
-        )
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Tài khoản & Ngân hàng", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AppleTextPrimary)
-                        Text("${accounts.size} nguồn tiền • Chuẩn kiến trúc", fontSize = 12.sp, color = AppleTextSecondary)
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại", tint = AppleTextPrimary)
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { showAddAccountDialog = true },
-                        modifier = Modifier.testTag("btn_add_account")
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = "Thêm tài khoản", tint = AppleOrange)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = OledBlack)
-            )
-        },
-        containerColor = OledBlack
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp)
-        ) {
-            // Net Worth / Total Balance Header Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = AppleSurface1),
-                    border = BorderStroke(1.dp, AppleBorder)
-                ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        Text(
-                            text = "TỔNG TIỀN CÁC TÀI KHOẢN",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp,
-                            color = AppleTextSecondary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = formatVnd(totalBalance),
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = AppleTextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Bao gồm tiền mặt, ngân hàng, ví điện tử & đầu tư",
-                            fontSize = 12.sp,
-                            color = AppleTextSecondary
-                        )
-                    }
-                }
-            }
-
-            // Account Groups by Type
-            val grouped = accounts.groupBy { it.type }
-
-            for ((type, accList) in grouped) {
-                item {
-                    Text(
-                        text = "${type.iconEmoji} ${type.displayName} (${accList.size})",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AppleTextSecondary,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
-                    )
-                }
-
-                items(accList, key = { it.id }) { acc ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = AppleSurface1),
-                        border = BorderStroke(1.dp, AppleBorder)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            BankLogoBadge(
-                                bankId = acc.bankId,
-                                bankCode = acc.bankCode,
-                                size = 44.dp
+                } else {
+                    AppCard(contentPadding = Space.lg) {
+                        inSection.forEachIndexed { i, acc ->
+                            if (i > 0) RowDivider()
+                            ListRow(
+                                title = acc.name,
+                                subtitle = listOfNotNull(acc.type.displayName.takeIf { it != acc.name }, acc.accountNumberMasked).joinToString(" · "),
+                                leading = { AccountLogo(acc, size = 28.dp) },
+                                trailing = {
+                                    Text(formatVnd(acc.balance), fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold,
+                                        color = if (acc.balance < 0) Tone.danger else AppleTextPrimary)
+                                },
+                                onClick = { selected = acc }
                             )
-
-                            Spacer(modifier = Modifier.width(14.dp))
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = acc.name,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = AppleTextPrimary
-                                )
-
-                                if (!acc.accountNumberMasked.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = acc.accountNumberMasked,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = AppleTextSecondary
-                                    )
-                                }
-
-                                if (acc.type == AccountType.CREDIT_CARD && acc.creditLimit > 0) {
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Hạn mức: ${formatVnd(acc.creditLimit)}",
-                                        fontSize = 11.sp,
-                                        color = AppleOrange
-                                    )
-                                }
-                            }
-
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = formatVnd(acc.balance),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = if (acc.balance >= 0) AppleGreen else AppleRed
-                                )
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Surface(
-                                        onClick = {
-                                            reconcilingAccount = acc
-                                            newBalanceInput = acc.balance.toLong().toString()
-                                        },
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = AppleSurface3
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Tune,
-                                                contentDescription = null,
-                                                tint = AppleOrange,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Đối soát",
-                                                fontSize = 11.sp,
-                                                color = AppleOrange,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
-
-                                    Surface(
-                                        onClick = { accountToDelete = acc },
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = AppleRed.copy(alpha = 0.15f),
-                                        border = BorderStroke(1.dp, AppleRed.copy(alpha = 0.4f)),
-                                        modifier = Modifier.testTag("btn_delete_account_${acc.id}")
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "Xóa tài khoản",
-                                                tint = AppleRed,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(3.dp))
-                                            Text(
-                                                text = "Xóa",
-                                                fontSize = 11.sp,
-                                                color = AppleRed,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                 }
             }
         }
     }
+}
 
-    // Add Account Dialog
-    if (showAddAccountDialog) {
-        AddAccountDialog(
-            onDismiss = { showAddAccountDialog = false },
-            onAddAccount = { newAcc ->
-                viewModel.addAccount(newAcc)
-                Toast.makeText(context, "Đã thêm tài khoản: ${newAcc.name}", Toast.LENGTH_SHORT).show()
-                showAddAccountDialog = false
+@Composable
+private fun CreditCardTile(card: Account, status: CreditCardStatus?, onClick: () -> Unit, onPay: () -> Unit) {
+    val debt = (-card.balance).coerceAtLeast(0.0)
+    val util = if (card.creditLimit > 0) debt / card.creditLimit else 0.0
+    AppCard(onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AccountLogo(card, size = 28.dp)
+            Spacer(Modifier.width(Space.md))
+            Column(Modifier.weight(1f)) {
+                Text(card.name, fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = AppleTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOfNotNull(card.accountNumberMasked, card.statementDay?.let { "Sao kê ngày $it" }).joinToString(" · ").ifBlank { "Thẻ tín dụng" },
+                    fontSize = TextSize.xs, color = AppleTextSecondary
+                )
             }
-        )
+            status?.daysToDue?.let { d ->
+                val c = when { debt <= 0 -> AppleTextSecondary; d <= 3 -> Tone.danger; d <= 7 -> Tone.warning; else -> AppleTextSecondary }
+                Text(if (debt <= 0) "Không nợ" else if (d == 0) "Hạn hôm nay" else "Hạn sau $d ngày", fontSize = TextSize.xs, fontWeight = FontWeight.SemiBold, color = c)
+            }
+        }
+        Spacer(Modifier.height(Space.lg))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f)) {
+                Label("Dư nợ")
+                Text(formatVnd(debt), fontSize = TextSize.figure, fontWeight = FontWeight.Bold, color = if (debt > 0) Tone.danger else AppleTextPrimary)
+            }
+            if (card.creditLimit > 0) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Label("Còn trống")
+                    Text(compactVnd((card.creditLimit - debt).coerceAtLeast(0.0)), fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary)
+                }
+            }
+        }
+        if (card.creditLimit > 0) {
+            Spacer(Modifier.height(Space.md))
+            ThresholdBar(util)
+            Spacer(Modifier.height(Space.xs + 2.dp))
+            Text("Đã dùng ${(util * 100).roundToInt()}% hạn mức ${compactVnd(card.creditLimit)}", fontSize = TextSize.xs, color = AppleTextSecondary)
+        } else {
+            Spacer(Modifier.height(Space.sm))
+            Text("Chưa nhập hạn mức — chạm để cài đặt thẻ", fontSize = TextSize.xs, color = Tone.accent)
+        }
+        if (debt > 0) {
+            Spacer(Modifier.height(Space.md))
+            OutlinedButton(
+                onClick = onPay,
+                modifier = Modifier.fillMaxWidth().height(40.dp),
+                border = BorderStroke(1.dp, Tone.hairline),
+                shape = Radius.md
+            ) { Text("Trả thẻ", color = AppleTextPrimary, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold) }
+        }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddAccountDialog(
+private fun AccountActionsDialog(
+    account: Account,
     onDismiss: () -> Unit,
-    onAddAccount: (Account) -> Unit
+    onReconcile: () -> Unit,
+    onPayCard: () -> Unit,
+    onEditCard: () -> Unit,
+    onArchive: () -> Unit,
+    onDelete: () -> Unit
 ) {
-    var selectedType by remember { mutableStateOf(AccountType.BANK) }
-    var selectedBankId by remember { mutableStateOf("vcb") }
-    var accountName by remember { mutableStateOf("Vietcombank") }
-    var initialBalance by remember { mutableStateOf("") }
-    var maskedNumber by remember { mutableStateOf("•••• 8899") }
-    var creditLimitInput by remember { mutableStateOf("") }
-
-    val popularBanks = VietnameseBankRegistry.BANKS
-
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = AppleSurface2,
+        containerColor = AppleSurface1,
         title = {
-            Text("Thêm tài khoản mới", color = AppleTextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AccountLogo(account, size = 28.dp)
+                Spacer(Modifier.width(Space.md))
+                Text(account.name, fontWeight = FontWeight.Bold, color = AppleTextPrimary)
+            }
         },
         text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Account Type chips
-                Text("Loại tài khoản:", fontSize = 12.sp, color = AppleTextSecondary)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    AccountType.values().forEach { type ->
-                        FilterChip(
-                            selected = selectedType == type,
-                            onClick = {
-                                selectedType = type
-                                if (type == AccountType.CASH) {
-                                    accountName = "Tiền mặt"
-                                    selectedBankId = "cash"
-                                }
-                            },
-                            label = { Text("${type.iconEmoji} ${type.displayName}", fontSize = 11.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = AppleOrange,
-                                selectedLabelColor = Color.Black
-                            )
-                        )
-                    }
+            Column {
+                if (account.type == AccountType.CREDIT_CARD) {
+                    ActionRow("Trả thẻ", onPayCard)
+                    ActionRow("Cài đặt thẻ (hạn mức, ngày sao kê, ngày đến hạn)", onEditCard)
                 }
+                ActionRow("Điều chỉnh số dư", onReconcile)
+                ActionRow("Ngừng dùng (ẩn, giữ lịch sử)", onArchive)
+                ActionRow("Xóa hẳn", onDelete, color = Tone.danger)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng", color = AppleTextSecondary) } }
+    )
+}
 
-                if (selectedType == AccountType.BANK || selectedType == AccountType.CREDIT_CARD || selectedType == AccountType.E_WALLET) {
-                    Text("Chọn ngân hàng / ví:", fontSize = 12.sp, color = AppleTextSecondary)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        popularBanks.take(8).forEach { bank ->
-                            val isSelected = selectedBankId == bank.id
-                            Surface(
-                                onClick = {
-                                    selectedBankId = bank.id
-                                    accountName = bank.shortName
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) AppleOrange.copy(alpha = 0.2f) else AppleSurface3,
-                                border = BorderStroke(1.dp, if (isSelected) AppleOrange else AppleBorder)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    BankLogoBadge(bankId = bank.id, size = 22.dp)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = bank.shortName,
-                                        fontSize = 11.sp,
-                                        color = if (isSelected) AppleOrange else AppleTextPrimary
-                                    )
-                                }
-                            }
-                        }
+@Composable
+private fun ActionRow(text: String, onClick: () -> Unit, color: Color = AppleTextPrimary) {
+    Text(
+        text,
+        fontSize = TextSize.sm,
+        color = color,
+        modifier = Modifier.fillMaxWidth().clip(Radius.sm).clickable(onClick = onClick).padding(vertical = Space.md, horizontal = Space.xs)
+    )
+}
+
+@Composable
+private fun AmountDialog(
+    title: String,
+    hint: String,
+    label: String,
+    initial: String = "",
+    allowNegative: Boolean = false,
+    onDismiss: () -> Unit,
+    onConfirm: (Double) -> Unit
+) {
+    var input by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = AppleSurface1,
+        title = { Text(title, fontWeight = FontWeight.Bold, color = AppleTextPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
+                Text(hint, fontSize = TextSize.sm, color = AppleTextSecondary)
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { v -> input = v.filterIndexed { i, c -> c.isDigit() || (allowNegative && c == '-' && i == 0) } },
+                    label = { Text(label) },
+                    supportingText = { Text(formatVnd(input.toDoubleOrNull() ?: 0.0)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("reconcile_balance_input")
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { input.toDoubleOrNull()?.let(onConfirm) },
+                colors = ButtonDefaults.buttonColors(containerColor = Tone.accent, contentColor = Color.Black)
+            ) { Text("Lưu", fontWeight = FontWeight.SemiBold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy", color = AppleTextSecondary) } }
+    )
+}
+
+@Composable
+private fun PayCardDialog(card: Account, debt: Double, sources: List<Account>, onDismiss: () -> Unit, onConfirm: (Long, Double) -> Unit) {
+    var input by remember { mutableStateOf(debt.toLong().toString()) }
+    var fromId by remember { mutableStateOf(sources.firstOrNull { it.type == AccountType.BANK }?.id ?: sources.firstOrNull()?.id) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = AppleSurface1,
+        title = { Text("Trả thẻ ${card.name}", fontWeight = FontWeight.Bold, color = AppleTextPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
+                Text("Dư nợ: ${formatVnd(debt)}. Trả thẻ là chuyển tiền giữa tài khoản của bạn, không tính vào chi tiêu.",
+                    fontSize = TextSize.sm, color = AppleTextSecondary)
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it.filter(Char::isDigit) },
+                    label = { Text("Số tiền trả") },
+                    supportingText = { Text(formatVnd(input.toDoubleOrNull() ?: 0.0)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Label("Trả từ")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(sources, key = { it.id }) { acc ->
+                        FilterChip(selected = fromId == acc.id, onClick = { fromId = acc.id }, label = { Text(acc.name) })
                     }
-                }
-
-                OutlinedTextField(
-                    value = accountName,
-                    onValueChange = { accountName = it },
-                    label = { Text("Tên tài khoản", fontSize = 12.sp) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AppleOrange,
-                        unfocusedBorderColor = AppleBorder
-                    )
-                )
-
-                OutlinedTextField(
-                    value = maskedNumber,
-                    onValueChange = { maskedNumber = it },
-                    label = { Text("Số tài khoản hiển thị (ví dụ: •••• 8899)", fontSize = 12.sp) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AppleOrange,
-                        unfocusedBorderColor = AppleBorder
-                    )
-                )
-
-                OutlinedTextField(
-                    value = initialBalance,
-                    onValueChange = { initialBalance = it },
-                    label = { Text("Số dư ban đầu (VNĐ)", fontSize = 12.sp) },
-                    placeholder = { Text("Ví dụ: 10000000") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AppleOrange,
-                        unfocusedBorderColor = AppleBorder
-                    )
-                )
-
-                if (selectedType == AccountType.CREDIT_CARD) {
-                    OutlinedTextField(
-                        value = creditLimitInput,
-                        onValueChange = { creditLimitInput = it },
-                        label = { Text("Hạn mức thẻ (VNĐ)", fontSize = 12.sp) },
-                        placeholder = { Text("Ví dụ: 50000000") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AppleOrange,
-                            unfocusedBorderColor = AppleBorder
-                        )
-                    )
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val bal = initialBalance.toDoubleOrNull() ?: 0.0
-                    val limit = creditLimitInput.toDoubleOrNull() ?: 0.0
-                    val bankObj = VietnameseBankRegistry.findById(selectedBankId)
-
-                    val newAccount = Account(
-                        name = accountName.ifBlank { "Tài khoản mới" },
-                        type = selectedType,
-                        balance = bal,
-                        bankId = selectedBankId,
-                        bankCode = bankObj?.shortName?.take(3)?.uppercase(),
-                        accountNumberMasked = maskedNumber.ifBlank { "•••• 0000" },
-                        creditLimit = limit,
-                        colorHex = bankObj?.brandColorHex ?: "#005C2B"
-                    )
-                    onAddAccount(newAccount)
+                    val amount = input.toDoubleOrNull() ?: 0.0
+                    val from = fromId
+                    if (amount > 0 && from != null) onConfirm(from, amount)
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = AppleOrange)
-            ) {
-                Text("Lưu tài khoản", color = Color.Black, fontWeight = FontWeight.Bold)
-            }
+                enabled = sources.isNotEmpty(),
+                colors = ButtonDefaults.buttonColors(containerColor = Tone.accent, contentColor = Color.Black)
+            ) { Text("Trả thẻ", fontWeight = FontWeight.SemiBold) }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Hủy", color = AppleTextSecondary)
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy", color = AppleTextSecondary) } }
     )
 }
+
+@Composable
+private fun CardSettingsDialog(card: Account, onDismiss: () -> Unit, onSave: (Account) -> Unit) {
+    var limit by remember { mutableStateOf(if (card.creditLimit > 0) card.creditLimit.toLong().toString() else "") }
+    var statement by remember { mutableStateOf(card.statementDay?.toString() ?: "") }
+    var due by remember { mutableStateOf(card.dueDay?.toString() ?: "") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = AppleSurface1,
+        title = { Text("Cài đặt thẻ ${card.name}", fontWeight = FontWeight.Bold, color = AppleTextPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
+                CreditCardFields(limit, { limit = it }, statement, { statement = it }, due, { due = it })
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(card.copy(creditLimit = parseVnd(limit), statementDay = statement.toIntOrNull()?.coerceIn(1, 31), dueDay = due.toIntOrNull()?.coerceIn(1, 31)))
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Tone.accent, contentColor = Color.Black)
+            ) { Text("Lưu", fontWeight = FontWeight.SemiBold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy", color = AppleTextSecondary) } }
+    )
+}
+
+@Composable
+private fun CreditCardFields(
+    limit: String, onLimit: (String) -> Unit,
+    statement: String, onStatement: (String) -> Unit,
+    due: String, onDue: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = limit,
+        onValueChange = { onLimit(it.filter(Char::isDigit)) },
+        label = { Text("Hạn mức (VNĐ)") },
+        supportingText = { Text(formatVnd(limit.toDoubleOrNull() ?: 0.0)) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth()
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
+        OutlinedTextField(
+            value = statement,
+            onValueChange = { onStatement(it.filter(Char::isDigit).take(2)) },
+            label = { Text("Ngày sao kê") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            modifier = Modifier.weight(1f)
+        )
+        OutlinedTextField(
+            value = due,
+            onValueChange = { onDue(it.filter(Char::isDigit).take(2)) },
+            label = { Text("Ngày đến hạn") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+private val ADDABLE_TYPES = listOf(AccountType.CASH, AccountType.BANK, AccountType.E_WALLET, AccountType.CREDIT_CARD, AccountType.SAVINGS, AccountType.INVESTMENT)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AddAccountDialog(
+    onDismiss: () -> Unit,
+    onAddAccount: (Account) -> Unit
+) {
+    var type by remember { mutableStateOf(AccountType.BANK) }
+    var bankId by remember { mutableStateOf<String?>(null) }
+    var name by remember { mutableStateOf("") }
+    var balance by remember { mutableStateOf("") }
+    var masked by remember { mutableStateOf("") }
+    var limit by remember { mutableStateOf("") }
+    var statement by remember { mutableStateOf("") }
+    var due by remember { mutableStateOf("") }
+    val needsBank = type == AccountType.BANK || type == AccountType.CREDIT_CARD || type == AccountType.E_WALLET || type == AccountType.SAVINGS
+    val banks = remember(type) {
+        VietnameseBankRegistry.BANKS.filter { b ->
+            val wallet = b.supportedPaymentMethods.contains("wallet")
+            if (type == AccountType.E_WALLET) wallet else !wallet
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = AppleSurface1,
+        title = { Text("Thêm tài khoản", fontWeight = FontWeight.Bold, color = AppleTextPrimary) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Space.md)
+            ) {
+                Label("Loại")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ADDABLE_TYPES.forEach { t ->
+                        FilterChip(
+                            selected = type == t,
+                            onClick = {
+                                type = t
+                                bankId = null
+                                if (t == AccountType.CASH) name = "Tiền mặt"
+                            },
+                            label = { Text(t.displayName) }
+                        )
+                    }
+                }
+                if (needsBank) {
+                    Label(if (type == AccountType.E_WALLET) "Ví" else "Ngân hàng")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                        banks.forEach { bank ->
+                            val on = bankId == bank.id
+                            Box(
+                                modifier = Modifier
+                                    .clip(Radius.sm)
+                                    .border(2.dp, if (on) Tone.accent else Color.Transparent, Radius.sm)
+                                    .clickable {
+                                        bankId = bank.id
+                                        name = if (type == AccountType.CREDIT_CARD) "Thẻ ${bank.shortName}" else bank.shortName
+                                    }
+                                    .padding(3.dp)
+                            ) {
+                                BankLogoBadge(bankId = bank.id, size = 30.dp)
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tên hiển thị") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (needsBank) {
+                    OutlinedTextField(
+                        value = masked,
+                        onValueChange = { masked = it.filter(Char::isDigit).takeLast(4) },
+                        label = { Text("4 số cuối (không bắt buộc)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                OutlinedTextField(
+                    value = balance,
+                    onValueChange = { balance = it.filter(Char::isDigit) },
+                    label = { Text(if (type == AccountType.CREDIT_CARD) "Dư nợ hiện tại (VNĐ)" else "Số dư hiện tại (VNĐ)") },
+                    supportingText = { Text(formatVnd(balance.toDoubleOrNull() ?: 0.0)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (type == AccountType.CREDIT_CARD) {
+                    CreditCardFields(limit, { limit = it }, statement, { statement = it }, due, { due = it })
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val amount = parseVnd(balance)
+                    val bank = bankId?.let { VietnameseBankRegistry.findById(it) }
+                    onAddAccount(
+                        Account(
+                            name = name.ifBlank { bank?.shortName ?: type.displayName },
+                            type = type,
+                            // A card's balance is what you owe, stored as a negative number.
+                            balance = if (type == AccountType.CREDIT_CARD) -amount else amount,
+                            bankId = bankId ?: if (type == AccountType.CASH) "cash" else null,
+                            bankCode = bank?.id?.uppercase(),
+                            accountNumberMasked = masked.takeIf { it.isNotBlank() }?.let { "•••• $it" },
+                            creditLimit = parseVnd(limit),
+                            statementDay = statement.toIntOrNull()?.coerceIn(1, 31),
+                            dueDay = due.toIntOrNull()?.coerceIn(1, 31),
+                            colorHex = bank?.brandColorHex ?: "#0A84FF"
+                        )
+                    )
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Tone.accent, contentColor = Color.Black)
+            ) { Text("Thêm", fontWeight = FontWeight.SemiBold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy", color = AppleTextSecondary) } }
+    )
+}
+

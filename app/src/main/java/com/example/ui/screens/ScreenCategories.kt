@@ -1,5 +1,15 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.text.style.TextOverflow
+import com.example.data.local.InitialCategories
+import com.example.ui.theme.Tone
+import com.example.ui.theme.TextSize
+import com.example.ui.theme.Space
+import com.example.ui.components.compactVnd
+import com.example.ui.components.SegmentedTabs
+import com.example.ui.components.RowDivider
+import com.example.ui.components.IconTile
+import com.example.ui.components.AppCard
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
@@ -199,272 +209,81 @@ fun ScreenCategories(
         },
         containerColor = OledBlack
     ) { innerPadding ->
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp)
+        fun openEditor(cat: Category) {
+            categoryToEdit = cat
+            inputName = cat.name
+            inputEmoji = cat.emoji ?: "🍜"
+            inputColorHex = cat.colorHex
+            inputParentId = cat.parentId
+            isAddingNewCategory = true
+        }
+
+        // Groups in the standard order; custom groups after them.
+        val grouped = remember(filteredList) {
+            filteredList.filter { it.parentId == null }
+                .groupBy { it.groupName ?: "Khác" }
+                .toList()
+                .sortedBy { (g, _) -> InitialCategories.groupOrder.indexOf(g).let { if (it < 0) 99 else it } }
+        }
+
+        LazyColumn(
+            modifier = modifier.fillMaxSize().padding(innerPadding),
+            contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = Space.xxl),
+            verticalArrangement = Arrangement.spacedBy(Space.md)
         ) {
-            // Tab Row: Chi tiêu | Thu nhập
-            TabRow(
-                selectedTabIndex = if (selectedTab == CategoryType.EXPENSE) 0 else 1,
-                containerColor = AppleSurface1,
-                contentColor = AppleOrange,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(1.dp, AppleBorder, RoundedCornerShape(14.dp))
-            ) {
-                Tab(
-                    selected = selectedTab == CategoryType.EXPENSE,
-                    onClick = { selectedTab = CategoryType.EXPENSE },
-                    text = {
-                        Text(
-                            text = "Chi tiêu (${categories.count { it.type == CategoryType.EXPENSE }})",
-                            fontWeight = if (selectedTab == CategoryType.EXPENSE) FontWeight.Bold else FontWeight.Medium,
-                            color = if (selectedTab == CategoryType.EXPENSE) AppleOrange else AppleTextSecondary
-                        )
-                    }
+            item {
+                SegmentedTabs(
+                    options = listOf(
+                        "Chi tiêu (${categories.count { it.type == CategoryType.EXPENSE }})",
+                        "Thu nhập (${categories.count { it.type == CategoryType.INCOME }})"
+                    ),
+                    selected = if (selectedTab == CategoryType.EXPENSE) 0 else 1,
+                    onSelect = { selectedTab = if (it == 0) CategoryType.EXPENSE else CategoryType.INCOME }
                 )
-                Tab(
-                    selected = selectedTab == CategoryType.INCOME,
-                    onClick = { selectedTab = CategoryType.INCOME },
-                    text = {
-                        Text(
-                            text = "Thu nhập (${categories.count { it.type == CategoryType.INCOME }})",
-                            fontWeight = if (selectedTab == CategoryType.INCOME) FontWeight.Bold else FontWeight.Medium,
-                            color = if (selectedTab == CategoryType.INCOME) AppleGreen else AppleTextSecondary
-                        )
-                    }
-                )
+                Spacer(Modifier.height(Space.xs))
+                Text("⭐ = hiện đầu tiên khi ghi giao dịch. Chạm một mục để sửa.", fontSize = TextSize.xs, color = AppleTextSecondary)
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 80.dp)
-            ) {
-                items(rootCategories, key = { it.id }) { cat ->
-                    val subList = categories.filter { it.parentId == cat.id }
-                    val isExpanded = expandedParentId == cat.id
-                    val spent = getCategorySpent(cat.id)
-                    val budget = getCategoryBudget(cat.id)
-                    val percentSpent = if (budget != null && budget > 0) ((spent / budget) * 100).toInt() else null
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = AppleSurface1),
-                        border = BorderStroke(1.dp, AppleBorder)
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CategoryIconBadge(
-                                    category = cat,
-                                    size = 44.dp,
-                                    isCircle = false
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = cat.name,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
-                                            color = AppleTextPrimary
-                                        )
-                                        if (subList.isNotEmpty()) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = AppleSurface3
-                                            ) {
-                                                Text(
-                                                    text = "${subList.size} con",
-                                                    fontSize = 10.sp,
-                                                    color = AppleTextSecondary,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Đã chi: ${formatVnd(spent)}",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (selectedTab == CategoryType.EXPENSE) AppleOrange else AppleGreen
-                                    )
-                                }
-
-                                if (percentSpent != null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(
-                                                if (percentSpent > 100) AppleRed.copy(alpha = 0.15f) else AppleOrange.copy(alpha = 0.15f)
-                                            )
-                                            .border(1.dp, if (percentSpent > 100) AppleRed else AppleOrange, RoundedCornerShape(8.dp))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = "$percentSpent%",
-                                            color = if (percentSpent > 100) AppleRed else AppleOrange,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                }
-
-                                // Priority Star Button (Toggle Ưu tiên)
-                                IconButton(
-                                    onClick = {
-                                        val newPriority = !cat.isPriority
-                                        viewModel.toggleCategoryPriority(cat.id, newPriority)
-                                        Toast.makeText(
-                                            context,
-                                            if (newPriority) "Đã thêm \"${cat.name}\" vào mục ưu tiên ⭐" else "Đã bỏ ưu tiên \"${cat.name}\"",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    },
-                                    modifier = Modifier.size(30.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (cat.isPriority) Icons.Default.Star else Icons.Default.StarBorder,
-                                        contentDescription = "Ưu tiên",
-                                        tint = if (cat.isPriority) AppleOrange else AppleTextSecondary.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                // Edit button
-                                IconButton(
-                                    onClick = {
-                                        categoryToEdit = cat
-                                        inputName = cat.name
-                                        inputEmoji = cat.emoji ?: "🍜"
-                                        inputColorHex = cat.colorHex
-                                        inputParentId = cat.parentId
-                                        isAddingNewCategory = true
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(imageVector = Icons.Default.Edit, contentDescription = "Sửa", tint = AppleTextSecondary, modifier = Modifier.size(16.dp))
-                                }
-
-                                // Expand / Collapse subcategories
-                                if (subList.isNotEmpty()) {
-                                    IconButton(
-                                        onClick = {
-                                            expandedParentId = if (isExpanded) null else cat.id
-                                        },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                            contentDescription = "Mở rộng",
-                                            tint = AppleTextSecondary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Subcategories Tree View
-                            AnimatedVisibility(visible = isExpanded && subList.isNotEmpty()) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 10.dp, start = 20.dp)
-                                ) {
-                                    subList.forEach { sub ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(text = "└── ", color = AppleTextSecondary, fontSize = 13.sp)
-                                            Text(text = sub.emoji ?: "•", fontSize = 14.sp)
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = sub.name,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = AppleTextPrimary,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            // Priority Star for Subcategory
-                                            IconButton(
-                                                onClick = {
-                                                    val newPriority = !sub.isPriority
-                                                    viewModel.toggleCategoryPriority(sub.id, newPriority)
-                                                    Toast.makeText(
-                                                        context,
-                                                        if (newPriority) "Đã thêm \"${sub.name}\" vào ưu tiên ⭐" else "Đã bỏ ưu tiên \"${sub.name}\"",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
-                                                },
-                                                modifier = Modifier.size(28.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (sub.isPriority) Icons.Default.Star else Icons.Default.StarBorder,
-                                                    contentDescription = "Ưu tiên mục con",
-                                                    tint = if (sub.isPriority) AppleOrange else AppleTextSecondary.copy(alpha = 0.4f),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-
-                                            IconButton(
-                                                onClick = {
-                                                    categoryToEdit = sub
-                                                    inputName = sub.name
-                                                    inputEmoji = sub.emoji ?: "🍳"
-                                                    inputColorHex = sub.colorHex
-                                                    inputParentId = sub.parentId
-                                                    isAddingNewCategory = true
-                                                },
-                                                modifier = Modifier.size(28.dp)
-                                            ) {
-                                                Icon(imageVector = Icons.Default.Edit, contentDescription = "Sửa danh mục con", tint = AppleTextSecondary, modifier = Modifier.size(14.dp))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Add subcategory button
+            for ((groupName, cats) in grouped) {
+                item(key = "g_$groupName") {
+                    val groupSpent = cats.sumOf { getCategorySpent(it.id) }
+                    Row(Modifier.fillMaxWidth().padding(top = Space.sm, bottom = Space.sm), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(parseColorSafe(cats.first().colorHex)))
+                        Spacer(Modifier.width(Space.sm))
+                        Text(groupName, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary, modifier = Modifier.weight(1f))
+                        if (groupSpent > 0) Text("${if (selectedTab == CategoryType.EXPENSE) "Đã chi" else "Đã thu"} ${compactVnd(groupSpent)}", fontSize = TextSize.xs, color = AppleTextSecondary)
+                    }
+                    AppCard(contentPadding = Space.lg) {
+                        val rows = cats.flatMap { root -> listOf(root) + categories.filter { it.parentId == root.id } }
+                        rows.forEachIndexed { i, cat ->
+                            if (i > 0) RowDivider()
+                            val spent = getCategorySpent(cat.id)
+                            val budget = getCategoryBudget(cat.id)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.End
+                                    .clickable { openEditor(cat) }
+                                    .padding(vertical = Space.sm, horizontal = 0.dp)
+                                    .padding(start = if (cat.parentId != null) Space.xxl else 0.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Surface(
-                                    onClick = {
-                                        parentForSubCategory = cat
-                                        categoryToEdit = null
-                                        inputName = ""
-                                        inputEmoji = "🍳"
-                                        inputColorHex = cat.colorHex
-                                        inputParentId = cat.id
-                                        isAddingNewCategory = true
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = AppleSurface3
-                                ) {
-                                    Text(
-                                        text = "+ Thêm danh mục con",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = AppleOrange,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                IconTile(parseColorSafe(cat.colorHex), emoji = cat.emoji ?: "🏷️", size = 36.dp)
+                                Spacer(Modifier.width(Space.md))
+                                Column(Modifier.weight(1f)) {
+                                    Text(cat.name, fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = AppleTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    val sub = when {
+                                        budget != null && budget > 0 -> "${compactVnd(spent)} / ${compactVnd(budget)} ngân sách"
+                                        spent > 0 -> "Tháng này ${compactVnd(spent)}"
+                                        else -> null
+                                    }
+                                    if (sub != null) Text(sub, fontSize = TextSize.xs, color = if (budget != null && spent > budget) Tone.danger else AppleTextSecondary)
+                                }
+                                IconButton(onClick = { viewModel.toggleCategoryPriority(cat.id, !cat.isPriority) }) {
+                                    Icon(
+                                        imageVector = if (cat.isPriority) Icons.Default.Star else Icons.Default.StarBorder,
+                                        contentDescription = if (cat.isPriority) "Bỏ ưu tiên" else "Ưu tiên",
+                                        tint = if (cat.isPriority) Tone.accent else AppleTextSecondary.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }

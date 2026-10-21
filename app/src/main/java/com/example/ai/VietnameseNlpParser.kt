@@ -84,17 +84,17 @@ object VietnameseNlpParser {
     private val keywordsMap = listOf(
         "xăng" to fuelKeywords,
         "gửi xe" to listOf("gửi xe", "vé gửi xe", "giữ xe"),
-        "sửa xe" to listOf("sửa xe", "vá xe", "vá lốp", "thay lốp", "rửa xe"),
+        "bảo dưỡng xe" to listOf("sửa xe", "bảo dưỡng", "vá xe", "vá lốp", "thay lốp", "rửa xe"),
         "phí cầu đường" to listOf("cầu đường", "phí bot", "trạm bot", "vetc", "epass"),
-        "taxi" to listOf("grab", "taxi", "xanh sm", "be car", "gojek"),
+        "taxi / xe" to listOf("grab", "taxi", "xanh sm", "be car", "gojek"),
         "ăn sáng" to listOf("ăn sáng", "bánh mì", "xôi", "phở sáng"),
         "ăn trưa" to listOf("ăn trưa", "cơm trưa"),
         "ăn tối" to listOf("ăn tối", "cơm tối"),
         "cà phê" to listOf("cà phê", "cafe", "cafê", "coffee", "highlands", "starbucks"),
         "trà sữa" to listOf("trà sữa", "trà chanh", "nước ngọt", "sinh tố"),
-        "ăn ngoài" to listOf("phở", "bún", "lẩu", "nướng", "hủ tiếu", "cơm", "nhà hàng", "quán"),
+        "nhà hàng" to listOf("phở", "bún", "lẩu", "nướng", "hủ tiếu", "cơm", "nhà hàng", "quán"),
         "đặt đồ ăn" to listOf("shopeefood", "grabfood", "baemin", "đặt đồ ăn"),
-        "mua thực phẩm" to listOf("đi chợ", "siêu thị", "winmart", "bách hóa xanh", "coopmart", "thực phẩm"),
+        "đi chợ" to listOf("đi chợ", "siêu thị", "winmart", "bách hóa xanh", "coopmart", "thực phẩm"),
         "tiền điện" to listOf("tiền điện", "evn", "hóa đơn điện"),
         "tiền nước" to listOf("tiền nước", "hóa đơn nước"),
         "internet" to listOf("internet", "wifi", "tiền mạng", "fpt", "viettel net"),
@@ -102,8 +102,8 @@ object VietnameseNlpParser {
         "mua sắm" to listOf("quần áo", "giày", "dép", "shopee", "lazada", "tiki", "mua sắm", "mỹ phẩm"),
         "giải trí" to listOf("xem phim", "cgv", "lotte cinema", "netflix", "spotify", "karaoke", "chơi game"),
         "thuốc" to listOf("thuốc", "nhà thuốc", "pharmacity", "long châu"),
-        "khám" to listOf("bệnh viện", "khám bệnh", "nha khoa", "bác sĩ", "khám"),
-        "học phí" to listOf("học phí", "tiền học", "khóa học"),
+        "khám bệnh" to listOf("bệnh viện", "khám bệnh", "nha khoa", "bác sĩ", "khám"),
+        "học phí / khóa học" to listOf("học phí", "tiền học", "khóa học"),
         // Broad fallbacks for users whose categories are coarse ("Ăn uống", "Đi lại", "Sức khỏe"...).
         "ăn uống" to listOf("ăn sáng", "ăn trưa", "ăn tối", "bánh mì", "xôi", "phở", "bún", "cơm", "lẩu", "nướng", "cà phê", "cafe", "trà sữa", "nhà hàng", "quán"),
         "đi lại" to listOf("grab", "taxi", "xe ôm", "xe buýt", "vé xe", "vé tàu", "máy bay", "gửi xe"),
@@ -112,8 +112,8 @@ object VietnameseNlpParser {
         "hóa đơn" to listOf("hóa đơn", "tiền điện", "tiền nước", "internet", "wifi", "tiền nhà", "chung cư"),
         "lương" to listOf("lương", "nhận lương", "bắn lương"),
         "thưởng" to listOf("thưởng", "bonus"),
-        "lãi" to listOf("tiền lãi", "lãi tiết kiệm", "lãi"),
-        "bán" to listOf("bán đồ", "bán hàng", "thanh lý")
+        "lãi tiết kiệm" to listOf("tiền lãi", "lãi tiết kiệm", "lãi"),
+        "kinh doanh" to listOf("bán đồ", "bán hàng", "thanh lý")
     )
 
     fun matchCategory(
@@ -133,7 +133,10 @@ object VietnameseNlpParser {
         // 1. Keyword rules mapped onto whatever matching category the user actually has.
         for ((fragment, keywords) in keywordsMap) {
             if (VnText.hasAnyWord(text, keywords)) {
-                val found = targetCategories.firstOrNull { VnText.unaccent(it.name).contains(VnText.unaccent(fragment)) }
+                val f = VnText.unaccent(fragment)
+                // Match a category by name first, then fall back to the first category of a matching group.
+                val found = targetCategories.firstOrNull { VnText.unaccent(it.name).contains(f) }
+                    ?: targetCategories.firstOrNull { VnText.unaccent(it.groupName ?: "").contains(f) }
                 if (found != null) return found
             }
         }

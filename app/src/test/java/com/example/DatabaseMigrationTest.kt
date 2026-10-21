@@ -10,6 +10,8 @@ import com.example.data.model.TransactionType
 import com.example.data.repository.FinanceRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -43,6 +45,15 @@ class DatabaseMigrationTest {
             db.execSQL("INSERT INTO categories VALUES (1,'Ăn sáng','EXPENSE','restaurant','#F97316',1,1,NULL,'🍚','Ăn uống',1)")
             db.execSQL("INSERT INTO categories VALUES (2,'Lương','INCOME','payments','#10B981',1,2,NULL,'💰',NULL,0)")
             db.execSQL("INSERT INTO categories VALUES (3,'Ăn sáng','EXPENSE','restaurant','#F97316',1,1,NULL,'🍚','Ăn uống',1)")
+            // Old v1 defaults: two that merge into one new category, and a transfer-like one in use / unused.
+            db.execSQL("INSERT INTO categories VALUES (4,'Taxi','EXPENSE','x','#000000',1,3,NULL,NULL,'Đi lại',0)")
+            db.execSQL("INSERT INTO categories VALUES (5,'Xe ôm','EXPENSE','x','#000000',1,4,NULL,NULL,'Đi lại',0)")
+            db.execSQL("INSERT INTO categories VALUES (6,'Rút tiền mặt','EXPENSE','x','#000000',1,5,NULL,NULL,'Vay / Nợ',0)")
+            db.execSQL("INSERT INTO categories VALUES (7,'Đầu tư','EXPENSE','x','#000000',1,6,NULL,NULL,'Tài chính',0)")
+            db.execSQL("INSERT INTO transactions VALUES (3,'EXPENSE',40000,1,NULL,4,3000,'Taxi','',0,'PAID',NULL,NULL,NULL,NULL)")
+            db.execSQL("INSERT INTO transactions VALUES (4,'EXPENSE',25000,1,NULL,5,4000,'Xe ôm','',0,'PAID',NULL,NULL,NULL,NULL)")
+            db.execSQL("INSERT INTO transactions VALUES (5,'EXPENSE',500000,1,NULL,6,5000,'ATM','',0,'PAID',NULL,NULL,NULL,NULL)")
+            db.execSQL("UPDATE accounts SET bankId = 'vietinbank' WHERE id = 2")
             db.execSQL("INSERT INTO transactions VALUES (1,'EXPENSE',30000,1,NULL,3,1000,'Phở','',0,'PAID',NULL,NULL,NULL,NULL)")
             db.execSQL("INSERT INTO transactions VALUES (2,'EXPENSE',20000,1,NULL,1,2000,'Bánh mì','',0,'PAID',NULL,NULL,NULL,NULL)")
             db.execSQL("INSERT INTO budgets VALUES (1,3,500000,'2026-10',1,1,1)")
@@ -52,14 +63,23 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun migrates4to5_mergesDuplicatesAndKeepsHistory() = runBlocking {
+    fun migratesToLatest_cleansCategoriesAndKeepsHistory() = runBlocking {
         createV4Database()
         val db = AppDatabase.getDatabase(context)
         val repo = FinanceRepository(db)
 
         val categories = db.categoryDao().getAllCategoriesOnce()
-        assertEquals(setOf("Ăn sáng", "Lương"), categories.map { it.name }.toSet())
-        assertEquals(2, categories.size)
+        val byName = categories.groupBy { it.name }
+        // No duplicate names left, every new default present, old merged names gone.
+        assertEquals(categories.size, byName.size)
+        assertTrue(byName.keys.containsAll(com.example.data.local.InitialCategories.getDefaultCategories().map { it.name }))
+        assertFalse(byName.containsKey("Taxi") || byName.containsKey("Xe ôm") || byName.containsKey("Đầu tư"))
+        // "Taxi" and "Xe ôm" history now sits in one category; the used "Rút tiền mặt" was kept.
+        val taxiId = byName.getValue("Taxi / xe công nghệ").single().id
+        assertEquals(taxiId, db.transactionDao().getTransactionById(3)!!.categoryId)
+        assertEquals(taxiId, db.transactionDao().getTransactionById(4)!!.categoryId)
+        assertEquals("Khác", byName.getValue("Rút tiền mặt").single().groupName)
+        assertEquals("vtb", db.accountDao().getAccountById(2)!!.bankId)
 
         // Both transactions survive and now point at the surviving "Ăn sáng" row (id 1).
         assertEquals(1L, db.transactionDao().getTransactionById(1)!!.categoryId)

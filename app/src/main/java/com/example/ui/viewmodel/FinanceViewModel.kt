@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ai.FinancialAdvisorEngine
 import com.example.ai.FinancialSnapshot
+import com.example.ai.Insight
 import com.example.ai.ParsedTransaction
 import com.example.ai.VietnameseNlpParser
 import com.example.data.local.AppDatabase
@@ -84,10 +85,31 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     val financialSnapshot: StateFlow<FinancialSnapshot> = combine(
         combine(accounts, categories, currentMonthTransactions) { a, c, t -> Triple(a, c, t) },
-        combine(currentMonthBudgets, goals, debts) { b, g, d -> Triple(b, g, d) }
-    ) { (accs, cats, txs), (bdgs, gls, dbts) ->
-        FinancialAdvisorEngine.computeSnapshot(accs, cats, txs, bdgs, gls, dbts)
+        combine(currentMonthBudgets, goals, debts) { b, g, d -> Triple(b, g, d) },
+        transactions
+    ) { (accs, cats, txs), (bdgs, gls, dbts), all ->
+        FinancialAdvisorEngine.computeSnapshot(accs, cats, txs, bdgs, gls, dbts, allTransactions = all)
     }.asState(FinancialAdvisorEngine.computeSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
+
+    /** Automatic findings (credit card due, budgets, pace, trends) for the home screen and assistant. */
+    val insights: StateFlow<List<Insight>> = combine(financialSnapshot, currentMonthKey) { s, _ ->
+        FinancialAdvisorEngine.insights(s)
+    }.asState(emptyList())
+
+    /** Pays [amount] of a credit card's debt from another account (a transfer, not spending). */
+    fun payCreditCard(cardId: Long, fromAccountId: Long, amount: Double) {
+        addTransaction(
+            type = TransactionType.TRANSFER,
+            amount = amount,
+            sourceAccountId = fromAccountId,
+            destinationAccountId = cardId,
+            note = "Thanh toán thẻ tín dụng"
+        )
+    }
+
+    fun updateAccount(account: Account) {
+        viewModelScope.launch { repository.updateAccount(account) }
+    }
 
     fun parseNaturalLanguage(input: String): ParsedTransaction? {
         return VietnameseNlpParser.parse(input, accounts.value, categories.value)

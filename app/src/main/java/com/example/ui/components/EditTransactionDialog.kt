@@ -50,6 +50,7 @@ fun EditTransactionDialog(
     accounts: List<Account>,
     categories: List<Category>,
     onDismiss: () -> Unit,
+    onDelete: (() -> Unit)? = null,
     onSave: (Transaction) -> Unit
 ) {
     var amountInput by remember { mutableStateOf(transaction.amount.toLong().toString()) }
@@ -159,7 +160,12 @@ fun EditTransactionDialog(
                 )
             }) { Text("Lưu") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } }
+        dismissButton = {
+            androidx.compose.foundation.layout.Row {
+                if (onDelete != null) TextButton(onClick = onDelete) { Text("Xóa", color = androidx.compose.ui.graphics.Color(0xFFFF453A)) }
+                TextButton(onClick = onDismiss) { Text("Hủy") }
+            }
+        }
     )
 }
 

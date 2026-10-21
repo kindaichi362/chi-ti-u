@@ -1,5 +1,16 @@
 package com.example.ui.screens
 
+import com.example.data.model.countsInReports
+import com.example.ui.theme.Tone
+import com.example.ui.theme.TextSize
+import com.example.ui.theme.Space
+import com.example.ui.theme.Radius
+import com.example.ui.components.compactVnd
+import com.example.ui.components.TransactionRow
+import com.example.ui.components.RowDivider
+import com.example.ui.components.Label
+import com.example.ui.components.EmptyState
+import com.example.ui.components.AppCard
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -159,6 +170,10 @@ fun ScreenTransactions(
             accounts = accounts,
             categories = categories,
             onDismiss = { transactionToEdit = null },
+            onDelete = {
+                transactionToDelete = editing
+                transactionToEdit = null
+            },
             onSave = {
                 viewModel.updateTransaction(it)
                 transactionToEdit = null
@@ -190,393 +205,117 @@ fun ScreenTransactions(
         )
     }
 
+    val accountByIdMap = remember(accounts) { accounts.associateBy { it.id } }
+    val categoryByIdMap = remember(categories) { categories.associateBy { it.id } }
+    val filterOptions = listOf<Pair<String, TransactionType?>>(
+        "Tất cả" to null, "Chi" to TransactionType.EXPENSE, "Thu" to TransactionType.INCOME, "Chuyển" to TransactionType.TRANSFER
+    )
+
     Box(modifier = modifier.fillMaxSize().background(OledBlack)) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.lg, bottom = Space.xxl),
+            verticalArrangement = Arrangement.spacedBy(Space.md)
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Header Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "Lịch sử giao dịch",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AppleTextPrimary
-                    )
-                    Text(
-                        text = "Tìm kiếm tự nhiên • Sổ dòng tiền",
-                        fontSize = 12.sp,
-                        color = AppleTextSecondary
-                    )
-                }
-
-                Surface(
-                    onClick = onNavigateToAddTransaction,
-                    shape = CircleShape,
-                    color = AppleSurface2,
-                    border = BorderStroke(1.dp, AppleBorder),
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Thêm giao dịch",
-                            tint = AppleOrange,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
+            item {
+                Text("Giao dịch", fontSize = TextSize.xl, fontWeight = FontWeight.Bold, color = AppleTextPrimary)
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Natural Language Search Bar with Microphone button
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = {
-                    Text(
-                        "Hỏi AI: \"Tháng này tiêu ăn uống bao nhiêu?\"",
-                        fontSize = 12.sp,
-                        color = AppleTextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Tìm kiếm",
-                        tint = AppleTextSecondary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                },
-                trailingIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Xóa tìm kiếm",
-                                    tint = AppleTextSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
+            // Search: plain text, or a question ("tháng này tiêu ăn uống bao nhiêu")
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Tìm, hoặc hỏi \"tháng này ăn uống bao nhiêu\"", fontSize = TextSize.sm, color = AppleTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = AppleTextSecondary, modifier = Modifier.size(20.dp)) },
+                    trailingIcon = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Xóa tìm kiếm", tint = AppleTextSecondary, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            IconButton(onClick = { showVoiceSheet = true }, modifier = Modifier.testTag("search_voice_btn")) {
+                                Icon(Icons.Default.Mic, contentDescription = "Nói để ghi", tint = Tone.accent, modifier = Modifier.size(20.dp))
                             }
                         }
-                        IconButton(
-                            onClick = { showVoiceSheet = true },
-                            modifier = Modifier.testTag("search_voice_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Mic,
-                                contentDescription = "Nói để tìm",
-                                tint = AppleOrange,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("transaction_search_field"),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = AppleSurface1,
-                    unfocusedContainerColor = AppleSurface1,
-                    focusedBorderColor = AppleOrange,
-                    unfocusedBorderColor = AppleBorder
-                ),
-                singleLine = true
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Natural Language Query Quick Suggestions Chips (Requirement 12)
-            val sampleQueries = listOf(
-                "Tháng này tôi tiêu ăn uống bao nhiêu?",
-                "Những khoản trên 1 triệu tháng này?",
-                "Tiền xăng tháng trước?",
-                "Hôm nay tôi tiêu gì?"
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                for (sq in sampleQueries) {
-                    Surface(
-                        onClick = { searchQuery = sq },
-                        shape = RoundedCornerShape(12.dp),
-                        color = AppleSurface2,
-                        border = BorderStroke(1.dp, AppleBorder),
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = AppleOrange,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = sq,
-                                fontSize = 11.sp,
-                                color = AppleTextPrimary
-                            )
-                        }
-                    }
-                }
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("transaction_search_field"),
+                    shape = Radius.md,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = AppleSurface1,
+                        unfocusedContainerColor = AppleSurface1,
+                        focusedBorderColor = Tone.accent,
+                        unfocusedBorderColor = Tone.hairline
+                    ),
+                    singleLine = true
+                )
             }
 
-            // Natural Query AI Answer Card
-            if (naturalResult != null) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("natural_search_result_card"),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = AppleSurface2),
-                    border = BorderStroke(1.dp, AppleOrange.copy(alpha = 0.5f))
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(Space.sm)
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = AppleOrange,
-                                modifier = Modifier.size(16.dp)
+                    filterOptions.forEach { (label, type) ->
+                        FilterChip(
+                            selected = selectedFilterType == type,
+                            onClick = { selectedFilterType = type },
+                            label = { Text(label, fontSize = TextSize.sm) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Tone.accent,
+                                selectedLabelColor = Color.Black
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Kết quả phân tích dữ liệu thực tế",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AppleOrange
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = naturalResult.summaryText,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = AppleTextPrimary
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Standard Filter Chips: Tất cả | Chi | Thu | Chuyển
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = selectedFilterType == null,
-                    onClick = { selectedFilterType = null },
-                    label = { Text("Tất cả (${transactions.size})", fontSize = 12.sp) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = AppleOrange,
-                        selectedLabelColor = Color.Black
-                    )
-                )
-                FilterChip(
-                    selected = selectedFilterType == TransactionType.EXPENSE,
-                    onClick = { selectedFilterType = TransactionType.EXPENSE },
-                    label = { Text("Chi tiêu", fontSize = 12.sp) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = AppleRed,
-                        selectedLabelColor = Color.White
-                    )
-                )
-                FilterChip(
-                    selected = selectedFilterType == TransactionType.INCOME,
-                    onClick = { selectedFilterType = TransactionType.INCOME },
-                    label = { Text("Thu nhập", fontSize = 12.sp) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = AppleGreen,
-                        selectedLabelColor = Color.White
-                    )
-                )
-                FilterChip(
-                    selected = selectedFilterType == TransactionType.TRANSFER,
-                    onClick = { selectedFilterType = TransactionType.TRANSFER },
-                    label = { Text("Chuyển tiền", fontSize = 12.sp) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = AppleCyan,
-                        selectedLabelColor = Color.Black
-                    )
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Timeline Transaction List
-            if (filteredList.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = 40.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Không có giao dịch nào phù hợp", color = AppleTextSecondary, fontSize = 14.sp)
+            if (naturalResult != null) {
+                item {
+                    AppCard(modifier = Modifier.testTag("natural_search_result_card"), borderColor = Tone.accent.copy(alpha = 0.4f)) {
+                        Label("Kết quả", color = Tone.accent)
+                        Spacer(Modifier.height(Space.xs))
+                        Text(naturalResult.summaryText, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary)
                     }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(bottom = 100.dp)
-                ) {
-                    for ((groupDate, txs) in grouped) {
-                        item {
-                            Text(
-                                text = groupDate,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = AppleTextSecondary,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                            )
-                        }
+            }
 
-                        items(txs, key = { it.id }) { tx ->
-                            val category = categories.firstOrNull { it.id == tx.categoryId }
-                            val account = accounts.firstOrNull { it.id == tx.sourceAccountId }
+            if (filteredList.isEmpty()) {
+                item {
+                    AppCard {
+                        EmptyState(
+                            title = if (transactions.isEmpty()) "Chưa có giao dịch" else "Không có giao dịch phù hợp",
+                            body = if (transactions.isEmpty()) "Bấm ➕ ở thanh dưới để ghi khoản đầu tiên." else "Thử bỏ bộ lọc hoặc đổi từ khóa.",
+                            actionLabel = if (transactions.isEmpty()) "Ghi giao dịch" else null,
+                            onAction = if (transactions.isEmpty()) onNavigateToAddTransaction else null
+                        )
+                    }
+                }
+            }
 
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    // Balance adjustments are corrected by reconciling again, not edited.
-                                    .clickable(enabled = tx.type != TransactionType.ADJUSTMENT) { transactionToEdit = tx }
-                                    .testTag("tx_item_${tx.id}"),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = AppleSurface1),
-                                border = BorderStroke(1.dp, AppleBorder)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Category Avatar / Emoji
-                                    Box(
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(parseColorSafe(category?.colorHex ?: "#EF4444").copy(alpha = 0.16f))
-                                            .border(1.dp, parseColorSafe(category?.colorHex ?: "#EF4444").copy(alpha = 0.35f), RoundedCornerShape(12.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (!category?.emoji.isNullOrBlank()) {
-                                            Text(text = category!!.emoji!!, fontSize = 20.sp)
-                                        } else {
-                                            Icon(
-                                                imageVector = getIconForName(category?.iconName ?: "folder"),
-                                                contentDescription = null,
-                                                tint = parseColorSafe(category?.colorHex ?: "#EF4444"),
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(12.dp))
-
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = if (tx.note.isNotBlank()) tx.note else (category?.name ?: "Giao dịch"),
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 15.sp,
-                                            color = AppleTextPrimary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(tx.date))
-                                            Text(text = timeStr, fontSize = 12.sp, color = AppleTextSecondary)
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(text = "•", fontSize = 10.sp, color = AppleTextSecondary)
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            if (account != null) {
-                                                BankLogoBadge(bankId = account.bankId, bankCode = account.bankCode, size = 18.dp)
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = account.name,
-                                                    fontSize = 12.sp,
-                                                    color = AppleTextSecondary
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        val prefix = when (tx.type) {
-                                            TransactionType.EXPENSE -> "-"
-                                            TransactionType.INCOME -> "+"
-                                            TransactionType.TRANSFER -> "⇄ "
-                                            else -> ""
-                                        }
-                                        val color = when (tx.type) {
-                                            TransactionType.EXPENSE -> AppleRed
-                                            TransactionType.INCOME -> AppleGreen
-                                            TransactionType.TRANSFER -> AppleCyan
-                                            else -> AppleTextPrimary
-                                        }
-
-                                        val isCancelled = tx.paymentStatus == PaymentStatus.CANCELLED
-                                        Text(
-                                            text = "$prefix${formatVnd(tx.amount)}",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
-                                            color = if (isCancelled) AppleTextSecondary else color,
-                                            textDecoration = if (isCancelled) TextDecoration.LineThrough else null
-                                        )
-
-                                        if (tx.paymentStatus != PaymentStatus.PAID) {
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = if (isCancelled) "Đã hủy" else "Chờ QR",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isCancelled) AppleTextSecondary else AppleOrange
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    IconButton(
-                                        onClick = { transactionToDelete = tx },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Xóa",
-                                            tint = AppleTextSecondary.copy(alpha = 0.6f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
+            // One card per day, with that day's spending on the header line.
+            for ((groupDate, txs) in grouped) {
+                item(key = "day_$groupDate") {
+                    val daySpend = txs.filter { it.type == TransactionType.EXPENSE && it.countsInReports }.sumOf { it.amount }
+                    val dayIncome = txs.filter { it.type == TransactionType.INCOME && it.countsInReports }.sumOf { it.amount }
+                    Row(Modifier.fillMaxWidth().padding(top = Space.xs, bottom = Space.sm), verticalAlignment = Alignment.CenterVertically) {
+                        Text(groupDate, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = AppleTextSecondary, modifier = Modifier.weight(1f))
+                        if (dayIncome > 0) Text("+${compactVnd(dayIncome)}  ", fontSize = TextSize.xs, color = Tone.income)
+                        if (daySpend > 0) Text("-${compactVnd(daySpend)}", fontSize = TextSize.xs, color = AppleTextSecondary)
+                    }
+                    AppCard(contentPadding = Space.lg) {
+                        txs.forEachIndexed { i, tx ->
+                            if (i > 0) RowDivider()
+                            Box(Modifier.testTag("tx_item_${tx.id}")) {
+                                TransactionRow(
+                                    tx = tx,
+                                    category = categoryByIdMap[tx.categoryId],
+                                    account = accountByIdMap[tx.sourceAccountId],
+                                    destination = tx.destinationAccountId?.let { accountByIdMap[it] },
+                                    // Adjustments are corrected by reconciling again; tapping one offers deletion.
+                                    onClick = { if (tx.type == TransactionType.ADJUSTMENT) transactionToDelete = tx else transactionToEdit = tx }
+                                )
                             }
                         }
                     }

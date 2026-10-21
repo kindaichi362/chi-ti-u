@@ -25,7 +25,7 @@ import com.example.data.model.Transaction
         Goal::class,
         RecurringBill::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -92,6 +92,11 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Tests only: forget the open instance so the next call opens a fresh database file. */
+        fun resetForTests() {
+            synchronized(this) { INSTANCE?.close(); INSTANCE = null }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 // No destructive fallback: for a money app, a missing migration must fail loudly
@@ -101,7 +106,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "chi_tieu_thanh_phat_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, CategoryCleanupMigration)
                 .build()
                 INSTANCE = instance
                 instance

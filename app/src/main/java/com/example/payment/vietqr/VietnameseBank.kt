@@ -234,7 +234,7 @@ object VietnameseBankRegistry {
         ),
         VietnameseBank(
             id = "momo",
-            bin = "971005",
+            bin = "971025",
             shortName = "MoMo",
             fullName = "Ví điện tử MoMo",
             primaryPackage = "com.mservice.momotransfer",
@@ -258,7 +258,7 @@ object VietnameseBankRegistry {
         ),
         VietnameseBank(
             id = "viettelmoney",
-            bin = "971011",
+            bin = "971005",
             shortName = "Viettel Money",
             fullName = "Hệ sinh thái tài chính số Viettel Money",
             primaryPackage = "com.bplus.vtpay",
@@ -275,10 +275,18 @@ object VietnameseBankRegistry {
         return BANKS.firstOrNull { it.bin == cleanBin }
     }
 
+    /** Ids written by older app versions, which did not match the registry ids. */
+    private val legacyIds = mapOf(
+        "vietinbank" to "vtb", "ctg" to "vtb", "icb" to "vtb", "vpbank" to "vpb", "agribank" to "vba",
+        "tpbank" to "tpb", "sacombank" to "stb", "techcombank" to "tcb", "vietcombank" to "vcb",
+        "mbbank" to "mb", "hdbank" to "hdb", "eximbank" to "eib", "seabank" to "seap"
+    )
+
     fun findById(id: String): VietnameseBank? {
         val cleanId = id.trim().lowercase()
         if (cleanId == "cash") return CASH_ENTRY
-        return BANKS.firstOrNull { it.id == cleanId }
+        val resolved = legacyIds[cleanId] ?: cleanId
+        return BANKS.firstOrNull { it.id == resolved }
     }
 
     fun findByNameOrKeyword(keyword: String): VietnameseBank? {

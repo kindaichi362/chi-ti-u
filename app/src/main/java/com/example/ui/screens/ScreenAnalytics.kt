@@ -1,5 +1,14 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.AppleTextSecondary
+import com.example.ui.theme.AppleTextPrimary
+import com.example.ui.theme.Radius
+import com.example.ui.theme.Tone
+import com.example.ui.theme.TextSize
+import com.example.ui.theme.Space
+import com.example.ui.components.SegmentedTabs
+import com.example.ui.components.Label
+import com.example.ui.components.AppCard
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
@@ -175,258 +184,87 @@ fun ScreenAnalytics(
     }
 
     val monthTitle = SimpleDateFormat("MMMM yyyy", Locale("vi", "VN")).format(displayCalendar.time)
-
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = Space.page)
     ) {
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Month Selector Header
+        // Month navigator
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(
-                    text = "Báo cáo tài chính",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = monthTitle.replaceFirstChar { it.titlecase(Locale("vi", "VN")) },
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
+            IconButton(onClick = { calendarMonthOffset -= 1 }) {
+                Icon(imageVector = Icons.Default.ChevronLeft, contentDescription = "Tháng trước", tint = AppleTextPrimary)
             }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = { calendarMonthOffset -= 1 },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.ChevronLeft, contentDescription = "Tháng trước")
-                }
-
-                if (calendarMonthOffset != 0) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                        modifier = Modifier.clickable { calendarMonthOffset = 0 }
-                    ) {
-                        Text(
-                            text = "Nay",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = { calendarMonthOffset += 1 },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.ChevronRight, contentDescription = "Tháng sau")
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // 3 High-Contrast Clean Cashflow Summary Cards
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Tổng thu card (Emerald/Green tint)
-            Card(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.12f))
-            ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .background(Color(0xFF10B981), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.TrendingUp,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Tổng thu",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF047857)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "+${formatCompactVnd(monthIncome)}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF059669),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            // Tổng chi card (Coral Red/Rose tint)
-            Card(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.12f))
-            ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .background(Color(0xFFEF4444), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.TrendingDown,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Tổng chi",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFB91C1C)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "-${formatCompactVnd(monthExpense)}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFFDC2626),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            // Dư ròng card (Indigo/Blue or Amber if deficit)
-            val isSurplus = monthNetSavings >= 0
-            val savingsColor = if (isSurplus) Color(0xFF2563EB) else Color(0xFFD97706)
-            Card(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = savingsColor.copy(alpha = 0.12f))
-            ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .background(savingsColor, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (isSurplus) "✓" else "!",
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (isSurplus) "Dư ròng" else "Thâm hụt",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = savingsColor
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "${if (monthNetSavings > 0) "+" else ""}${formatCompactVnd(monthNetSavings)}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = savingsColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Tab selection: Biểu đồ tròn vs Lịch thu chi
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-            modifier = Modifier.clip(RoundedCornerShape(12.dp))
-        ) {
-            Tab(
-                selected = selectedTab == 0,
-                onClick = { selectedTab = 0 },
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(imageVector = Icons.Default.PieChart, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Biểu đồ tròn", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
-                }
+            Text(
+                text = monthTitle.replaceFirstChar { it.titlecase(Locale.forLanguageTag("vi-VN")) },
+                fontSize = TextSize.base,
+                fontWeight = FontWeight.SemiBold,
+                color = AppleTextPrimary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f)
             )
-
-            Tab(
-                selected = selectedTab == 1,
-                onClick = { selectedTab = 1 },
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(imageVector = Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Lịch thu chi", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
-                }
-            )
+            if (calendarMonthOffset != 0) {
+                Text(
+                    text = "Tháng này",
+                    fontSize = TextSize.xs,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Tone.accent,
+                    modifier = Modifier.clip(Radius.sm).clickable { calendarMonthOffset = 0 }.padding(Space.xs)
+                )
+            }
+            IconButton(onClick = { calendarMonthOffset += 1 }, enabled = calendarMonthOffset < 0) {
+                Icon(imageVector = Icons.Default.ChevronRight, contentDescription = "Tháng sau",
+                    tint = if (calendarMonthOffset < 0) AppleTextPrimary else AppleTextSecondary.copy(alpha = 0.3f))
+            }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        // Cash-flow summary: one card, three figures, colour only where it carries meaning.
+        AppCard(contentPadding = Space.lg) {
+            Row {
+                Column(Modifier.weight(1f)) {
+                    Label("Thu")
+                    Text(formatCompactVnd(monthIncome), fontSize = TextSize.lg, fontWeight = FontWeight.SemiBold, color = Tone.income, maxLines = 1)
+                }
+                Column(Modifier.weight(1f)) {
+                    Label("Chi")
+                    Text(formatCompactVnd(monthExpense), fontSize = TextSize.lg, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary, maxLines = 1)
+                }
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    Label(if (monthNetSavings >= 0) "Để dành" else "Thâm hụt")
+                    Text(formatCompactVnd(kotlin.math.abs(monthNetSavings)), fontSize = TextSize.lg, fontWeight = FontWeight.SemiBold,
+                        color = if (monthNetSavings >= 0) Tone.income else Tone.danger, maxLines = 1)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(Space.md))
+
+        SegmentedTabs(
+            options = listOf("Theo danh mục", "Lịch thu chi"),
+            selected = selectedTab,
+            onSelect = { selectedTab = it }
+        )
+
+        Spacer(modifier = Modifier.height(Space.md))
 
         when (selectedTab) {
-            0 -> {
-                // BIỂU ĐỒ TRÒN (DONUT / PIE CHART)
-                DonutChartSection(
-                    totalExpense = monthExpense,
-                    sortedCategories = sortedCategories,
-                    categories = categories,
-                    monthTransactions = monthTransactions
-                )
-            }
-            1 -> {
-                // LỊCH THU CHI (FINANCIAL CALENDAR)
-                FinancialCalendarSection(
-                    displayCalendar = displayCalendar,
-                    transactions = monthTransactions,
-                    monthIncome = monthIncome,
-                    monthExpense = monthExpense,
-                    monthNetSavings = monthNetSavings,
-                    categories = categories,
-                    accounts = accounts
-                )
-            }
+            0 -> DonutChartSection(
+                totalExpense = monthExpense,
+                sortedCategories = sortedCategories,
+                categories = categories,
+                monthTransactions = monthTransactions
+            )
+            1 -> FinancialCalendarSection(
+                displayCalendar = displayCalendar,
+                transactions = monthTransactions,
+                monthIncome = monthIncome,
+                monthExpense = monthExpense,
+                monthNetSavings = monthNetSavings,
+                categories = categories,
+                accounts = accounts
+            )
         }
     }
 }

@@ -214,15 +214,15 @@ fun ScreenAddTransaction(
                                     .height(50.dp)
                                     .testTag("save_transaction_button"),
                                 shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ExpenseRed)
+                                colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.Tone.accent)
                             ) {
-                                Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (currentAmount > 0) "Lưu chi (${formatCompactVnd(currentAmount)})" else "Xác nhận lưu",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    color = Color.Black
                                 )
                             }
 
@@ -244,15 +244,15 @@ fun ScreenAddTransaction(
                                     .height(50.dp)
                                     .testTag("btn_pay_track_qr"),
                                 shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = AppleOrange)
+                                colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.AppleSurface3)
                             ) {
-                                Icon(imageVector = Icons.Default.QrCodeScanner, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                                Icon(imageVector = Icons.Default.QrCodeScanner, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Quét QR",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.Black
+                                    color = Color.White
                                 )
                             }
                         }
@@ -564,14 +564,6 @@ fun ScreenAddTransaction(
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                     )
                                 },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = getIconForName(cat.iconName),
-                                        contentDescription = null,
-                                        tint = if (isSelected) Color.White else parseColorSafe(cat.colorHex),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = parseColorSafe(cat.colorHex),
                                     selectedLabelColor = Color.White
@@ -665,13 +657,7 @@ fun ScreenAddTransaction(
                             selected = isSelected,
                             onClick = { selectedSourceAccountId = acc.id },
                             label = { Text(acc.name, fontSize = 12.sp) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = getIconForName(acc.iconName),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
+                            leadingIcon = { com.example.ui.components.AccountLogo(acc, size = 16.dp) }
                         )
                     }
                 }
@@ -698,13 +684,7 @@ fun ScreenAddTransaction(
                                 selected = isSelected,
                                 onClick = { selectedDestAccountId = acc.id },
                                 label = { Text(acc.name, fontSize = 12.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = getIconForName(acc.iconName),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
+                                leadingIcon = { com.example.ui.components.AccountLogo(acc, size = 16.dp) }
                             )
                         }
                     }
