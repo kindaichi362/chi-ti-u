@@ -1,0 +1,6 @@
+{
+  "name": "Chi tiêu Thành Phát",
+  "description": "Ứng dụng quản lý tài chính cá nhân hiện đại dành cho người Việt Nam - Nhập tiền trong vài giây, hiểu tiền trong vài phút.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

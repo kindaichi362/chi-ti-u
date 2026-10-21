@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54">
+        <!-- Main Wallet Base -->
+        <path
+            android:fillColor="#F6FDF9"
+            android:pathData="M32,38 C30.34,38 29,39.34 29,41 L29,67 C29,70.31 31.69,73 35,73 L73,73 C76.31,73 79,70.31 79,67 L79,51 C79,47.69 76.31,45 73,45 L35,45 C33.34,45 32,43.66 32,42 C32,40.34 33.34,39 35,39 L74,39 C74.55,39 75,38.55 75,38 C75,37.45 74.55,37 74,37 L35,37 C33.9,37 32.88,37.38 32,38 Z" />
+        <!-- Wallet Flap with Coin Clasp -->
+        <path
+            android:fillColor="#FBBF24"
+            android:pathData="M66,53 C66,50.79 67.79,49 70,49 L79,49 L79,63 L70,63 C67.79,63 66,61.21 66,59 Z" />
+        <path
+            android:fillColor="#064E3B"
+            android:pathData="M72,56 A2,2 0 1,1 72,56.01" />
+        <!-- Upward Growth Arrow (Thành Phát / Prosperity) -->
+        <path
+            android:fillColor="#34D399"
+            android:pathData="M48,31 L64,31 L64,47 L58,41 L45,54 L39,48 L52,35 Z" />
+    </group>
+</vector>
