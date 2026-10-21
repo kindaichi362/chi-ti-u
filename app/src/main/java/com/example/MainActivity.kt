@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PieChart
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -45,6 +48,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -150,6 +155,10 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = AppPalette.background,
+        // Voice entry is always one tap away on every main tab.
+        floatingActionButton = {
+            if (showBottomBar) VoiceButton(onClick = { showVoiceBottomSheet = true })
+        },
         bottomBar = {
             if (showBottomBar) {
                 BottomBar(
@@ -289,6 +298,30 @@ private fun BottomBar(
             NavItem(MainDestination.REPORTS, current, onSelect, Modifier.weight(1f))
             NavItem(MainDestination.ACCOUNTS, current, onSelect, Modifier.weight(1f))
         }
+    }
+}
+
+/** Floating "Nói" pill above the bottom bar: opens voice entry (the user reviews before saving). */
+@Composable
+private fun VoiceButton(onClick: () -> Unit) {
+    val p = AppPalette
+    Row(
+        modifier = Modifier
+            .shadow(6.dp, CircleShape)
+            .clip(CircleShape)
+            .background(p.card)
+            .border(1.dp, p.border, CircleShape)
+            .clickable(role = Role.Button, onClickLabel = "Nhập nhanh bằng giọng nói", onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(start = 14.dp, end = 18.dp)
+            .testTag("fab_voice_transaction"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(32.dp).background(p.accent, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(Icons.Outlined.Mic, contentDescription = null, tint = p.onAccent, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(8.dp))
+        Text("Nói", fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = p.textPrimary)
     }
 }
 

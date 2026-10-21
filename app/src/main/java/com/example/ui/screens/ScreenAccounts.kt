@@ -182,7 +182,7 @@ fun ScreenAccounts(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.md, bottom = Space.xxl),
+        contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.md, bottom = Space.bottomBarClearance),  // room for the floating "Nói" button
         verticalArrangement = Arrangement.spacedBy(Space.lg)
     ) {
         item {

@@ -188,7 +188,7 @@ fun ScreenAnalytics(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = Space.xxl),
+        contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = Space.bottomBarClearance),  // room for the floating "Nói" button
         verticalArrangement = Arrangement.spacedBy(Space.md)
     ) {
 
