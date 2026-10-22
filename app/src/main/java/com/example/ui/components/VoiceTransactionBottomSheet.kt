@@ -126,9 +126,12 @@ fun VoiceTransactionBottomSheet(
     val categories by viewModel.categories.collectAsState()
 
     var isListening by remember { mutableStateOf(false) }
+    var speechStarted by remember { mutableStateOf(false) }
+    var lastPartialText by remember { mutableStateOf("") }
     var recognizedText by remember { mutableStateOf("") }
+    var savingVoiceTransaction by remember { mutableStateOf(false) }
     var manualInputText by remember { mutableStateOf("") }
-    var statusMessage by remember { mutableStateOf("🎙️ Đang lắng nghe... Nói câu bất kỳ (VD: Ăn sáng 50k tiền mặt, Đỏ xăng 50k vcb)") }
+    var statusMessage by remember { mutableStateOf("Đang nghe · ví dụ: Ăn sáng 50 nghìn tiền mặt") }
     var showFullCategoryPicker by remember { mutableStateOf(false) }
     var categorySearchQuery by remember { mutableStateOf("") }
 
@@ -146,13 +149,13 @@ fun VoiceTransactionBottomSheet(
     fun resetSilenceTimer() {
         silenceTimerJob?.cancel()
         silenceTimerJob = coroutineScope.launch {
-            delay(2000L) // 2 giây im lặng sau khi nói -> tự động kết thúc ghi âm
+            delay(2500L)
             if (isListening) {
                 try {
                     speechRecognizer?.stopListening()
                 } catch (_: Exception) {}
                 isListening = false
-                statusMessage = "Đã nhận âm thanh xong, đang xử lý thông tin..."
+                statusMessage = "Đã nghe xong. Đang nhận diện nội dung..."
             }
         }
     }
@@ -182,7 +185,8 @@ fun VoiceTransactionBottomSheet(
 
     fun saveCurrentDraft() {
         val draft = currentDraft ?: return
-        if (!draft.isComplete) return
+        if (!draft.isComplete || savingVoiceTransaction) return
+        savingVoiceTransaction = true
         val finalAmt = draft.amount ?: 0.0
         val finalAccId = draft.accountId ?: accounts.firstOrNull()?.id ?: 1L
         viewModel.addTransaction(
@@ -216,9 +220,9 @@ fun VoiceTransactionBottomSheet(
             if (!draft.hasAccount) missing.add("Tài khoản chi")
 
             if (draft.isComplete) {
-                statusMessage = "✅ Đầy đủ: Số tiền • Danh mục • Tài khoản. Vui lòng kiểm tra lại rồi bấm 'Xác nhận lưu'!"
+                statusMessage = "Đã nhận diện xong. Kiểm tra rồi xác nhận lưu."
             } else {
-                statusMessage = "⚠️ Vui lòng chọn thêm: ${missing.joinToString(", ")}"
+                statusMessage = "Cần bổ sung: ${missing.joinToString(", ")}"
             }
         } else {
             statusMessage = "Đã nghe: \"$trimmed\". Bạn hãy chọn thêm bên dưới."
@@ -244,6 +248,8 @@ fun VoiceTransactionBottomSheet(
         }
 
         try {
+            speechStarted = false
+            lastPartialText = ""
             speechRecognizer?.destroy()
             speechRecognizer = null
 
@@ -270,22 +276,24 @@ fun VoiceTransactionBottomSheet(
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "vi-VN")
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "vi-VN")
                 putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, "vi-VN")
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_PROMPT, "Nói chi tiêu của bạn...")
             }
 
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     isListening = true
-                    statusMessage = "🎙️ Đang lắng nghe... Nói câu bất kỳ (tự dừng sau 2s không có tiếng)"
+                    statusMessage = "Đang nghe · tự dừng sau 2–3 giây im lặng"
                 }
                 override fun onBeginningOfSpeech() {
-                    statusMessage = "Đang thu âm câu nói..."
+                    speechStarted = true
+                    statusMessage = "Đang nghe · tự dừng sau 2–3 giây im lặng"
                     resetSilenceTimer()
                 }
                 override fun onRmsChanged(rmsdB: Float) {
-                    if (rmsdB > 2.0f) {
+                    if (speechStarted && rmsdB > 3.5f) {
                         resetSilenceTimer()
                     }
                 }
@@ -293,11 +301,16 @@ fun VoiceTransactionBottomSheet(
                 override fun onEndOfSpeech() {
                     silenceTimerJob?.cancel()
                     isListening = false
-                    statusMessage = "Đang phân tích 3 yếu tố qua AI..."
+                    statusMessage = "Đang nhận diện nội dung..."
                 }
                 override fun onError(error: Int) {
                     silenceTimerJob?.cancel()
                     isListening = false
+                    if (lastPartialText.isNotBlank() &&
+                        (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
+                        applyPhrase(lastPartialText)
+                        return
+                    }
                     val errText = when (error) {
                         SpeechRecognizer.ERROR_NO_MATCH -> "Chưa nhận diện rõ câu nói. Hãy chạm Micro nói lại hoặc chọn gợi ý bên dưới."
                         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Hết thời gian chờ. Bấm Micro để nói lại nhé!"
@@ -320,10 +333,12 @@ fun VoiceTransactionBottomSheet(
                     }
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
-                    resetSilenceTimer()
                     val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull()
-                    if (!text.isNullOrBlank()) {
+                    if (!text.isNullOrBlank() && text != lastPartialText) {
+                        speechStarted = true
+                        lastPartialText = text
+                        resetSilenceTimer()
                         recognizedText = text
                         statusMessage = "Đang nghe: \"$text\"..."
                     }
@@ -333,21 +348,12 @@ fun VoiceTransactionBottomSheet(
 
             recognizer.startListening(intent)
             isListening = true
-            statusMessage = "🎙️ Đang lắng nghe... Nói câu bất kỳ (tự dừng sau 2s im lặng)"
+            statusMessage = "Đang nghe · tự dừng sau 2–3 giây im lặng"
         } catch (e: Exception) {
             silenceTimerJob?.cancel()
             isListening = false
             statusMessage = "Không thể bật micro: ${e.message}. Hãy chọn gợi ý hoặc gõ bên dưới."
         }
-    }
-
-    fun stopListening() {
-        silenceTimerJob?.cancel()
-        try {
-            speechRecognizer?.stopListening()
-        } catch (_: Exception) {}
-        isListening = false
-        statusMessage = "Đã dừng nghe. Bấm Micro để nói tiếp nếu cần."
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -426,13 +432,13 @@ fun VoiceTransactionBottomSheet(
             ) {
                 Column {
                     Text(
-                        text = "Nhập giọng nói thông minh",
+                        text = "Thêm bằng giọng nói",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = AppleTextPrimary
                     )
                     Text(
-                        text = "Yêu cầu đủ 3 yếu tố: Giá tiền • Danh mục • Tài khoản",
+                        text = "Nói số tiền, danh mục và tài khoản",
                         fontSize = 12.sp,
                         color = AppleOrange
                     )
@@ -466,9 +472,7 @@ fun VoiceTransactionBottomSheet(
 
                 Surface(
                     onClick = {
-                        if (isListening) {
-                            stopListening()
-                        } else {
+                        if (!isListening) {
                             if (!hasAudioPermission) {
                                 permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             } else {
@@ -531,6 +535,27 @@ fun VoiceTransactionBottomSheet(
             // 3 REQUIRED ELEMENTS TRACKER CARD (Giá tiền • Danh mục • Tài khoản chi)
             // =========================================================================
             val draft = currentDraft
+            if (draft?.isComplete == true) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = AppleSurface2),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Kiểm tra trước khi lưu", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppleTextPrimary)
+                        Text("${formatVnd(draft.amount ?: 0.0)} · ${draft.categoryName ?: "Danh mục"} · ${draft.accountName ?: "Tài khoản"}",
+                            fontSize = 13.sp, color = AppleTextSecondary)
+                        Button(
+                            onClick = { saveCurrentDraft() },
+                            enabled = !savingVoiceTransaction,
+                            modifier = Modifier.fillMaxWidth().testTag("btn_save_voice_transaction"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = AppleOrange)
+                        ) { Text("Xác nhận lưu", fontWeight = FontWeight.Bold, color = com.example.ui.theme.OnAccent) }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             if (draft != null) {
                 Card(
                     modifier = Modifier
@@ -551,7 +576,7 @@ fun VoiceTransactionBottomSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "KIỂM ĐÍNH 3 YẾU TỐ:",
+                                text = "THÔNG TIN GIAO DỊCH",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = AppleTextSecondary,
@@ -630,7 +655,7 @@ fun VoiceTransactionBottomSheet(
                                 )
                             } else {
                                 Text(
-                                    text = "⚠️ Chưa có số tiền",
+                                    text = "Chưa có số tiền",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = AppleOrange
@@ -695,8 +720,6 @@ fun VoiceTransactionBottomSheet(
                             )
                             if (draft.hasCategory && draft.categoryId != null) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(text = draft.categoryEmoji ?: "🍜", fontSize = 18.sp)
-                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = draft.categoryName ?: "Chi tiêu",
                                         fontSize = 14.sp,
@@ -708,7 +731,7 @@ fun VoiceTransactionBottomSheet(
                                 }
                             } else {
                                 Text(
-                                    text = "⚠️ Chưa chọn danh mục",
+                                    text = "Chưa chọn danh mục",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = AppleOrange
@@ -738,7 +761,7 @@ fun VoiceTransactionBottomSheet(
                                 border = BorderStroke(1.dp, AppleOrange)
                             ) {
                                 Text(
-                                    text = "📂 Xem tất cả (${categories.size})...",
+                                    text = "Tất cả danh mục (${categories.size})",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = AppleOrange,
@@ -760,7 +783,7 @@ fun VoiceTransactionBottomSheet(
                                     },
                                     label = {
                                         Text(
-                                            text = "${cat.emoji ?: "🍜"} ${cat.name}",
+                                            text = cat.name,
                                             fontSize = 12.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                         )
@@ -808,7 +831,7 @@ fun VoiceTransactionBottomSheet(
                                 }
                             } else {
                                 Text(
-                                    text = "⚠️ Chưa chọn tài khoản chi",
+                                    text = "Chưa chọn tài khoản chi",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = AppleOrange
@@ -876,53 +899,7 @@ fun VoiceTransactionBottomSheet(
                         // -------------------------------------------------------------
                         // NÚT LƯU GIAO DỊCH (Chỉ cho phép lưu khi đủ 3 yếu tố)
                         // -------------------------------------------------------------
-                        if (draft.isComplete) {
-                            Button(
-                                onClick = {
-                                    val finalAmt = draft.amount ?: 0.0
-                                    val finalAccId = draft.accountId ?: accounts.first().id
-                                    viewModel.addTransaction(
-                                        type = draft.type,
-                                        amount = finalAmt,
-                                        sourceAccountId = finalAccId,
-                                        destinationAccountId = draft.destinationAccountId,
-                                        categoryId = draft.categoryId,
-                                        note = draft.note,
-                                        paymentStatus = PaymentStatus.PAID
-                                    )
-                                    Toast.makeText(context, "Đã lưu thành công: ${formatVnd(finalAmt)}!", Toast.LENGTH_SHORT).show()
-                                    onTransactionSaved()
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp)
-                                    .testTag("btn_save_voice_transaction"),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = AppleOrange)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = com.example.ui.theme.OnAccent,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Xác nhận lưu giao dịch",
-                                    fontWeight = FontWeight.Bold,
-                                    color = com.example.ui.theme.OnAccent,
-                                    fontSize = 15.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "👉 Vui lòng kiểm tra lại thông tin trước khi xác nhận lưu",
-                                fontSize = 11.sp,
-                                color = AppleTextSecondary,
-                                modifier = Modifier.fillMaxWidth(),
-                                textAlign = TextAlign.Center
-                            )
-                        } else {
+                        if (!draft.isComplete) {
                             val missing = mutableListOf<String>()
                             if (!draft.hasAmount) missing.add("Số tiền")
                             if (!draft.hasCategory) missing.add("Danh mục")

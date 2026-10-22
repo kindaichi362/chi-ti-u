@@ -310,9 +310,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun deleteCategory(category: Category) {
+    fun deleteCategoryIfUnused(category: Category, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            repository.deleteCategory(category)
+            onResult(repository.deleteCategoryIfUnused(category))
         }
     }
 

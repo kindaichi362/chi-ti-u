@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Category
+import com.example.data.model.CategoryType
+import com.example.ui.theme.AppPalette
 import com.example.ui.theme.AppleBorder
 import com.example.ui.theme.AppleGreen
 import com.example.ui.theme.AppleOrange
@@ -43,30 +45,25 @@ fun CategoryIconBadge(
     isCircle: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val catColor = parseColorSafe(category.colorHex)
+    val palette = AppPalette
+    val income = category.type == CategoryType.INCOME
+    val base = parseColorSafe(category.colorHex, if (income) palette.income else palette.expense)
+    val catColor = androidx.compose.ui.graphics.lerp(base, palette.textPrimary, if (palette.isDark) 0.14f else 0.32f)
     val shape = if (isCircle) CircleShape else RoundedCornerShape(12.dp)
 
     Box(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(catColor.copy(alpha = 0.16f))
-            .border(1.dp, catColor.copy(alpha = 0.35f), shape),
+            .background(base.copy(alpha = if (palette.isDark) 0.22f else 0.14f)),
         contentAlignment = Alignment.Center
     ) {
-        if (!category.emoji.isNullOrBlank()) {
-            Text(
-                text = category.emoji,
-                fontSize = (size.value * 0.45).sp
-            )
-        } else {
-            Icon(
-                imageVector = getIconForName(category.iconName),
-                contentDescription = category.name,
-                tint = catColor,
-                modifier = Modifier.size(size * 0.52f)
-            )
-        }
+        Icon(
+            imageVector = categoryIcon(category),
+            contentDescription = category.name,
+            tint = catColor,
+            modifier = Modifier.size(size * 0.52f)
+        )
     }
 }
 

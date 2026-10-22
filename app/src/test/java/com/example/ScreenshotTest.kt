@@ -3,6 +3,9 @@ package com.example
 import android.app.Application
 import android.graphics.Bitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.AppDatabase
 import com.example.data.model.Account
@@ -14,6 +17,7 @@ import com.example.data.model.RecurringBill
 import com.example.data.model.Transaction
 import com.example.data.model.TransactionType
 import com.example.ui.theme.ChiTieuThanhPhatTheme
+import com.example.ui.components.CategoryChoiceChip
 import com.example.ui.viewmodel.FinanceViewModel
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -114,11 +118,52 @@ class ScreenshotTest {
 
     @Test fun dashboard() = run(MainDestination.DASHBOARD)
     @Test fun transactions() = run(MainDestination.TRANSACTIONS)
+    @Test fun categoryChoiceIcon() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        AppDatabase.resetForTests()
+        app.deleteDatabase("chi_tieu_thanh_phat_db")
+        val vm = FinanceViewModel(app)
+        seed(vm)
+        val db = AppDatabase.getDatabase(app)
+        val categories = runBlocking { db.categoryDao().getAllCategoriesOnce() }
+        val breakfast = categories.first { it.name == "Ăn sáng" }
+        compose.setContent {
+            ChiTieuThanhPhatTheme(darkTheme = false) {
+                androidx.compose.foundation.layout.Row {
+                    CategoryChoiceChip(category = breakfast, selected = true, onClick = {})
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("category_choice_${breakfast.id}").assertExists()
+        compose.onNodeWithText("Ăn sáng").assertExists()
+        val root = compose.activity.window.decorView
+        val bmp = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+        compose.runOnUiThread { root.draw(android.graphics.Canvas(bmp)) }
+        File(outDir, "category_choice_icon.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
     @Test fun reports() = run(MainDestination.REPORTS)
+    @Test fun reportsCalendar() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        AppDatabase.resetForTests()
+        app.deleteDatabase("chi_tieu_thanh_phat_db")
+        val vm = FinanceViewModel(app)
+        seed(vm)
+        shoot("reports_before_calendar", vm, MainDestination.REPORTS)
+        compose.onNodeWithText("Lịch thu chi").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Tổng thu").assertExists()
+        compose.onNodeWithText("Tổng chi").assertExists()
+        val root = compose.activity.window.decorView
+        val bmp = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+        compose.runOnUiThread { root.draw(android.graphics.Canvas(bmp)) }
+        File(outDir, "reports_calendar.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
     @Test fun accounts() = run(MainDestination.ACCOUNTS)
     @Test fun assistant() = run(MainDestination.AI_ASSISTANT)
     @Test fun add() = run(MainDestination.ADD_TRANSACTION)
     @Test fun categories() = run(MainDestination.CATEGORIES)
+    @Test @Config(qualifiers = "w360dp-h780dp-xxhdpi") fun categoriesNarrow() = run(MainDestination.CATEGORIES, "_360")
     @Test fun plans() = run(MainDestination.PLANS)
 
     // Tall renders show the whole scrolling page in one image.

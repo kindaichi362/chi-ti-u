@@ -1,0 +1,49 @@
+package com.example
+
+import android.app.Application
+import androidx.test.core.app.ApplicationProvider
+import com.example.data.backup.VpsBackup
+import com.example.data.local.AppDatabase
+import com.example.data.model.Account
+import com.example.data.model.AccountType
+import com.example.data.model.Category
+import com.example.data.model.CategoryType
+import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
+class VpsBackupTest {
+    @Test fun snapshotRestoresAllTablesAndRejectsChangedSchema() = runBlocking {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        AppDatabase.resetForTests()
+        app.deleteDatabase("chi_tieu_thanh_phat_db")
+        val db = AppDatabase.getDatabase(app)
+        val accounts = db.accountDao()
+        val categories = db.categoryDao()
+        accounts.insertAccount(Account(name = "Tiền mặt", type = AccountType.CASH, balance = 125_000.0))
+        categories.insertCategory(Category(name = "Ăn sáng", type = CategoryType.EXPENSE, iconName = "restaurant", colorHex = "#F97316"))
+        val backup = VpsBackup(app)
+        val snapshot = backup.createSnapshot()
+
+        accounts.setAccountBalance(1, 9_000.0)
+        categories.insertCategory(Category(name = "Tạm", type = CategoryType.EXPENSE, iconName = "home", colorHex = "#123456"))
+        backup.restoreSnapshot(snapshot)
+        assertEquals(125_000.0, accounts.getAccountById(1)!!.balance, 0.0)
+        assertEquals(1, categories.getCategoryCount())
+
+        val broken = JSONObject(String(snapshot)).put("databaseVersion", 999).toString().toByteArray()
+        try {
+            backup.restoreSnapshot(broken)
+            throw AssertionError("invalid snapshot accepted")
+        } catch (_: IllegalArgumentException) {
+            assertEquals(125_000.0, accounts.getAccountById(1)!!.balance, 0.0)
+        }
+        AppDatabase.resetForTests()
+    }
+}

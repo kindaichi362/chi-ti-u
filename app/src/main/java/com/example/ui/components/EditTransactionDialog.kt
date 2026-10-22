@@ -117,11 +117,9 @@ fun EditTransactionDialog(
                     Text("Danh mục", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(pickableCategories, key = { it.id }) { cat ->
-                            FilterChip(
-                                selected = categoryId == cat.id,
-                                onClick = { categoryId = cat.id },
-                                label = { Text("${cat.emoji ?: ""} ${cat.name}".trim(), fontSize = 12.sp) }
-                            )
+                            CategoryChoiceChip(category = cat, selected = categoryId == cat.id) {
+                                categoryId = cat.id
+                            }
                         }
                     }
                 }

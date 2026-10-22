@@ -18,6 +18,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,12 +28,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -85,6 +89,8 @@ import com.example.data.model.CategoryType
 import com.example.data.model.TransactionType
 import com.example.data.model.countsInReports
 import com.example.ui.components.CategoryIconBadge
+import com.example.ui.components.CategoryTile
+import com.example.ui.components.categoryIconOptions
 import com.example.ui.components.formatVnd
 import com.example.ui.components.parseColorSafe
 import com.example.ui.theme.AppleBorder
@@ -100,7 +106,7 @@ import com.example.ui.theme.AppleTextSecondary
 import com.example.ui.theme.OledBlack
 import com.example.ui.viewmodel.FinanceViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ScreenCategories(
     viewModel: FinanceViewModel,
@@ -115,12 +121,13 @@ fun ScreenCategories(
     var selectedTab by remember { mutableStateOf(CategoryType.EXPENSE) }
     var expandedParentId by remember { mutableStateOf<Long?>(null) }
     var categoryToEdit by remember { mutableStateOf<Category?>(null) }
+    var categoryToDelete by remember { mutableStateOf<Category?>(null) }
     var isAddingNewCategory by remember { mutableStateOf(false) }
     var parentForSubCategory by remember { mutableStateOf<Category?>(null) }
 
     // Dialog state for Add/Edit
     var inputName by remember { mutableStateOf("") }
-    var inputEmoji by remember { mutableStateOf("🍜") }
+    var inputIconName by remember { mutableStateOf("custom_other") }
     var inputColorHex by remember { mutableStateOf("#EF4444") }
     var inputParentId by remember { mutableStateOf<Long?>(null) }
 
@@ -130,12 +137,6 @@ fun ScreenCategories(
     val sampleColors = listOf(
         "#EF4444", "#F97316", "#F59E0B", "#10B981", "#06B6D4",
         "#3B82F6", "#6366F1", "#8B5CF6", "#EC4899", "#78716C"
-    )
-
-    val sampleEmojis = listOf(
-        "🍜", "🍳", "🍱", "🍲", "☕", "🥤", "⛽", "🛒", "🏠", "💡",
-        "🚗", "💊", "🎓", "🎮", "✈️", "👨‍👩‍👧", "👶", "💳", "📱", "📦",
-        "🎁", "💰", "📈", "📄", "🔧", "💼", "❤️"
     )
 
     // Calculate spent per category
@@ -164,13 +165,31 @@ fun ScreenCategories(
         return budgets.firstOrNull { it.categoryId == catId && it.monthYear == currentMonth }?.amountLimit
     }
 
+    if (categoryToDelete != null) {
+        val deleting = categoryToDelete!!
+        AlertDialog(
+            onDismissRequest = { categoryToDelete = null },
+            title = { Text("Xóa danh mục ${deleting.name}?") },
+            text = { Text("Chỉ xóa được danh mục chưa có giao dịch, ngân sách, hóa đơn hoặc danh mục con.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    categoryToDelete = null
+                    viewModel.deleteCategoryIfUnused(deleting) { deleted ->
+                        Toast.makeText(context, if (deleted) "Đã xóa danh mục" else "Danh mục đang được sử dụng, không thể xóa", Toast.LENGTH_LONG).show()
+                    }
+                }) { Text("Xóa", color = Tone.danger) }
+            },
+            dismissButton = { TextButton(onClick = { categoryToDelete = null }) { Text("Hủy") } }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
                         Text("Quản lý danh mục", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AppleTextPrimary)
-                        Text("${categories.size} danh mục • Hệ thống chuẩn", fontSize = 12.sp, color = AppleTextSecondary)
+                        Text("${categories.size} danh mục · Chạm Sửa để thay đổi", fontSize = 12.sp, color = AppleTextSecondary)
                     }
                 },
                 navigationIcon = {
@@ -189,20 +208,6 @@ fun ScreenCategories(
                     ) {
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = "Cập nhật 100+ danh mục", tint = AppleTextSecondary)
                     }
-                    IconButton(
-                        onClick = {
-                            categoryToEdit = null
-                            parentForSubCategory = null
-                            inputName = ""
-                            inputEmoji = if (selectedTab == CategoryType.EXPENSE) "🍜" else "💰"
-                            inputColorHex = if (selectedTab == CategoryType.EXPENSE) "#EF4444" else "#10B981"
-                            inputParentId = null
-                            isAddingNewCategory = true
-                        },
-                        modifier = Modifier.testTag("btn_add_category")
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = "Thêm danh mục", tint = AppleOrange)
-                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = OledBlack)
             )
@@ -212,7 +217,7 @@ fun ScreenCategories(
         fun openEditor(cat: Category) {
             categoryToEdit = cat
             inputName = cat.name
-            inputEmoji = cat.emoji ?: "🍜"
+            inputIconName = cat.iconName
             inputColorHex = cat.colorHex
             inputParentId = cat.parentId
             isAddingNewCategory = true
@@ -240,8 +245,24 @@ fun ScreenCategories(
                     selected = if (selectedTab == CategoryType.EXPENSE) 0 else 1,
                     onSelect = { selectedTab = if (it == 0) CategoryType.EXPENSE else CategoryType.INCOME }
                 )
-                Spacer(Modifier.height(Space.xs))
-                Text("⭐ = hiện đầu tiên khi ghi giao dịch. Chạm một mục để sửa.", fontSize = TextSize.xs, color = AppleTextSecondary)
+                Spacer(Modifier.height(Space.md))
+                Button(
+                    onClick = {
+                        categoryToEdit = null
+                        parentForSubCategory = null
+                        inputName = ""
+                        inputIconName = if (selectedTab == CategoryType.EXPENSE) "custom_food" else "custom_wallet"
+                        inputColorHex = if (selectedTab == CategoryType.EXPENSE) "#F97316" else "#10B981"
+                        inputParentId = null
+                        isAddingNewCategory = true
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("btn_add_category"),
+                    colors = ButtonDefaults.buttonColors(containerColor = AppleOrange)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(Space.sm))
+                    Text("Thêm danh mục", color = com.example.ui.theme.OnAccent)
+                }
             }
 
             for ((groupName, cats) in grouped) {
@@ -267,7 +288,7 @@ fun ScreenCategories(
                                     .padding(start = if (cat.parentId != null) Space.xxl else 0.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                com.example.ui.components.CategoryTile(cat, size = 36.dp)
+                                CategoryTile(cat, size = 40.dp)
                                 Spacer(Modifier.width(Space.md))
                                 Column(Modifier.weight(1f)) {
                                     Text(cat.name, fontSize = TextSize.sm, fontWeight = FontWeight.Medium, color = AppleTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -278,6 +299,7 @@ fun ScreenCategories(
                                     }
                                     if (sub != null) Text(sub, fontSize = TextSize.xs, color = if (budget != null && spent > budget) Tone.danger else AppleTextSecondary)
                                 }
+                                TextButton(onClick = { openEditor(cat) }) { Text("Sửa", color = AppleOrange) }
                                 IconButton(onClick = { viewModel.toggleCategoryPriority(cat.id, !cat.isPriority) }) {
                                     Icon(
                                         imageVector = if (cat.isPriority) Icons.Default.Star else Icons.Default.StarBorder,
@@ -311,7 +333,10 @@ fun ScreenCategories(
                     )
                 },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(
+                        modifier = Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(Space.md)
+                    ) {
                         OutlinedTextField(
                             value = inputName,
                             onValueChange = { inputName = it },
@@ -324,29 +349,41 @@ fun ScreenCategories(
                             )
                         )
 
-                        Text("Chọn Emoji đại diện:", fontSize = 12.sp, color = AppleTextSecondary)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CategoryTile(
+                                categoryToEdit?.copy(iconName = inputIconName, colorHex = inputColorHex)
+                                    ?: Category(name = inputName.ifBlank { "Danh mục mới" }, type = selectedTab, iconName = inputIconName, colorHex = inputColorHex),
+                                size = 44.dp
+                            )
+                            Spacer(Modifier.width(Space.md))
+                            Text("Xem trước biểu tượng và màu", fontSize = TextSize.sm, color = AppleTextSecondary)
+                        }
+
+                        Text("Biểu tượng", fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(Space.sm),
+                            verticalArrangement = Arrangement.spacedBy(Space.sm),
+                            maxItemsInEachRow = 5
                         ) {
-                            for (em in sampleEmojis) {
+                            for (option in categoryIconOptions) {
+                                val selected = inputIconName == option.key
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(if (inputEmoji == em) AppleOrange.copy(alpha = 0.3f) else AppleSurface3)
-                                        .border(1.dp, if (inputEmoji == em) AppleOrange else Color.Transparent, CircleShape)
-                                        .clickable { inputEmoji = em },
+                                        .size(44.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (selected) com.example.ui.theme.AppPalette.accentSoft else com.example.ui.theme.AppPalette.card)
+                                        .border(1.dp, if (selected) AppleOrange else AppleBorder, RoundedCornerShape(12.dp))
+                                        .clickable { inputIconName = option.key },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(text = em, fontSize = 16.sp)
+                                    Icon(option.icon, contentDescription = option.label, tint = if (selected) AppleOrange else AppleTextPrimary, modifier = Modifier.size(23.dp))
                                 }
                             }
                         }
+                        Text(categoryIconOptions.firstOrNull { it.key == inputIconName }?.label ?: "Chọn biểu tượng khác nếu muốn", fontSize = TextSize.xs, color = AppleTextSecondary)
 
-                        Text("Chọn màu chủ đạo:", fontSize = 12.sp, color = AppleTextSecondary)
+                        Text("Màu danh mục", fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = AppleTextPrimary)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -369,6 +406,15 @@ fun ScreenCategories(
                                 )
                             }
                         }
+                        if (categoryToEdit != null && categoryToEdit!!.parentId == null) {
+                            TextButton(onClick = {
+                                parentForSubCategory = categoryToEdit
+                                inputParentId = categoryToEdit!!.id
+                                categoryToEdit = null
+                                inputName = ""
+                                inputIconName = "custom_other"
+                            }) { Text("+ Thêm danh mục con", color = AppleOrange) }
+                        }
                     }
                 },
                 confirmButton = {
@@ -383,7 +429,8 @@ fun ScreenCategories(
                                 viewModel.updateCategory(
                                     categoryToEdit!!.copy(
                                         name = inputName,
-                                        emoji = inputEmoji,
+                                        iconName = inputIconName,
+                                        emoji = null,
                                         colorHex = inputColorHex
                                     )
                                 )
@@ -392,9 +439,9 @@ fun ScreenCategories(
                                 viewModel.addCategory(
                                     name = inputName,
                                     type = selectedTab,
-                                    iconName = "folder",
+                                    iconName = inputIconName,
                                     colorHex = inputColorHex,
-                                    emoji = inputEmoji,
+                                    emoji = null,
                                     parentId = inputParentId
                                 )
                                 Toast.makeText(context, "Đã tạo danh mục thành công!", Toast.LENGTH_SHORT).show()
@@ -407,8 +454,16 @@ fun ScreenCategories(
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { isAddingNewCategory = false }) {
-                        Text("Hủy", color = AppleTextSecondary)
+                    Row {
+                        if (categoryToEdit != null) {
+                            TextButton(onClick = {
+                                categoryToDelete = categoryToEdit
+                                isAddingNewCategory = false
+                            }) { Text("Xóa", color = Tone.danger) }
+                        }
+                        TextButton(onClick = { isAddingNewCategory = false }) {
+                            Text("Hủy", color = AppleTextSecondary)
+                        }
                     }
                 }
             )

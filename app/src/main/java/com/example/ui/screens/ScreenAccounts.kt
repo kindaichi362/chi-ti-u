@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.automirrored.outlined.EventNote
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.FactCheck
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -111,6 +112,7 @@ fun ScreenAccounts(
     onOpenAccount: (Long) -> Unit,
     onTransfer: () -> Unit,
     onOpenPlans: () -> Unit,
+    onOpenCategories: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -230,6 +232,18 @@ fun ScreenAccounts(
             }
         }
 
+        item {
+            AppCard(contentPadding = Space.lg) {
+                ListRow(
+                    title = "Quản lý danh mục",
+                    subtitle = "Thêm, sửa, xóa và chọn biểu tượng",
+                    leading = { IconTile(Icons.Outlined.Category, tint = p.accent, background = p.accentSoft) },
+                    showChevron = true,
+                    onClick = onOpenCategories
+                )
+            }
+        }
+
         for ((title, types) in SECTIONS) {
             val inSection = accounts.filter { it.type in types }
             if (inSection.isEmpty()) continue
@@ -280,7 +294,7 @@ fun ScreenAccounts(
                 RowDivider()
                 ListRow(
                     title = "Quản lý tài khoản & cài đặt",
-                    subtitle = "Tài khoản đã ẩn, giao diện sáng/tối, danh mục",
+                    subtitle = "Tài khoản đã ẩn, giao diện sáng/tối, sao lưu",
                     leading = { IconTile(Icons.Outlined.Settings, tint = p.accent, background = p.accentSoft) },
                     showChevron = true,
                     onClick = onOpenSettings

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.TransactionRow
+import com.example.ui.components.MINUS
 import kotlin.math.roundToInt
 import com.example.ui.components.categoryIcon
 import com.example.ui.components.compactVnd
@@ -66,6 +68,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -88,10 +91,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Category
+import com.example.data.model.CategoryType
 import com.example.data.model.Transaction
 import com.example.data.model.TransactionType
 import com.example.data.model.countsInReports
-import com.example.ui.components.CategoryAvatar
+import com.example.ui.components.CategoryTile
 import com.example.ui.components.TransactionAmountText
 import com.example.ui.components.formatVnd
 import com.example.ui.components.parseColorSafe
@@ -150,6 +154,7 @@ private data class CategoryShare(val category: Category?, val name: String, val 
 fun ScreenAnalytics(
     viewModel: FinanceViewModel,
     onOpenBudgets: () -> Unit = {},
+    calendarOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val p = AppPalette
@@ -158,7 +163,6 @@ fun ScreenAnalytics(
     val accounts by viewModel.accounts.collectAsState()
     val snapshot by viewModel.financialSnapshot.collectAsState()
     val offset by viewModel.selectedMonthOffset.collectAsState()
-    var mode by remember { mutableIntStateOf(0) }
 
     val displayCalendar = remember(offset) {
         Calendar.getInstance().apply {
@@ -186,6 +190,19 @@ fun ScreenAnalytics(
             .sortedByDescending { it.amount }
     }
 
+    if (calendarOnly) {
+        FinancialCalendarSection(
+            displayCalendar = displayCalendar,
+            transactions = monthTransactions,
+            monthIncome = monthIncome,
+            monthExpense = monthExpense,
+            monthNetSavings = net,
+            categories = categories,
+            accounts = accounts
+        )
+        return
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = Space.bottomBarClearance),  // room for the floating "Nói" button
@@ -205,11 +222,6 @@ fun ScreenAnalytics(
         }
 
         item {
-            SegmentedTabs(options = listOf("Theo danh mục", "Lịch thu chi"), selected = mode, onSelect = { mode = it })
-        }
-
-        if (mode == 0) {
-            item {
                 AppCard(contentPadding = Space.lg) {
                     Text("Chi tiêu theo danh mục", fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = p.textPrimary)
                     if (shares.isEmpty()) {
@@ -230,19 +242,6 @@ fun ScreenAnalytics(
                         }
                     }
                 }
-            }
-        } else {
-            item {
-                FinancialCalendarSection(
-                    displayCalendar = displayCalendar,
-                    transactions = monthTransactions,
-                    monthIncome = monthIncome,
-                    monthExpense = monthExpense,
-                    monthNetSavings = net,
-                    categories = categories,
-                    accounts = accounts
-                )
-            }
         }
 
         // Budget summary for the same month, with a way into the Budget tab.
@@ -390,9 +389,8 @@ fun FinancialCalendarSection(
             todayCalendar.get(Calendar.YEAR) == displayCalendar.get(Calendar.YEAR)
     val todayDayNumber = if (isCurrentMonth) todayCalendar.get(Calendar.DAY_OF_MONTH) else null
 
-    // Default select today if in current month and nothing selected
-    if (selectedDayNumber == null && todayDayNumber != null) {
-        selectedDayNumber = todayDayNumber
+    LaunchedEffect(displayCalendar.timeInMillis) {
+        selectedDayNumber = todayDayNumber ?: 1
     }
 
     val selectedDayTransactions = selectedDayNumber?.let { dayMap[it] } ?: emptyList()
@@ -401,7 +399,8 @@ fun FinancialCalendarSection(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 90.dp),
+        // Page margins and room for the floating mic button, like every other tab.
+        contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = Space.bottomBarClearance),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Month Cashflow Summary Bar
@@ -419,12 +418,12 @@ fun FinancialCalendarSection(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(text = "Tổng thu", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(text = "+${formatVnd(monthIncome)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF059669))
+                        Text(text = "+" + formatVnd(monthIncome), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppPalette.income)
                     }
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(text = "Tổng chi", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(text = "-${formatVnd(monthExpense)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                        Text(text = MINUS + formatVnd(monthExpense), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppPalette.expense)
                     }
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -433,7 +432,7 @@ fun FinancialCalendarSection(
                             text = "${if (monthNetSavings > 0) "+" else ""}${formatVnd(monthNetSavings)}",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (monthNetSavings >= 0) Color(0xFF2563EB) else Color(0xFFDC2626)
+                            color = if (monthNetSavings >= 0) AppPalette.textPrimary else AppPalette.expense
                         )
                     }
                 }
@@ -542,22 +541,8 @@ fun FinancialCalendarSection(
                             }
 
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (dayIncome > 0) {
-                                    Text(
-                                        text = "+${formatVnd(dayIncome)}",
-                                        color = IncomeGreen,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                                if (dayExpense > 0) {
-                                    Text(
-                                        text = "-${formatVnd(dayExpense)}",
-                                        color = ExpenseRed,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    )
-                                }
+                                Text("Thu ${formatVnd(dayIncome)}", color = IncomeGreen, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("Chi ${formatVnd(dayExpense)}", color = ExpenseRed, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                         }
 
@@ -570,51 +555,18 @@ fun FinancialCalendarSection(
                             )
                         } else {
                             Spacer(modifier = Modifier.height(10.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                for (tx in selectedDayTransactions) {
-                                    val cat = categories.firstOrNull { it.id == tx.categoryId }
-                                    val acc = accounts.firstOrNull { it.id == tx.sourceAccountId }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = MaterialTheme.colorScheme.surface,
-                                        shadowElevation = 0.5.dp,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            CategoryAvatar(
-                                                iconName = cat?.iconName ?: if (tx.type == TransactionType.TRANSFER) "swap_horiz" else "wallet",
-                                                colorHex = cat?.colorHex ?: "#0A5C36",
-                                                size = 32.dp
-                                            )
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = if (tx.note.isNotBlank()) tx.note else cat?.name ?: tx.type.displayName,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontSize = 13.sp,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    text = "${acc?.name ?: "Ví"} • ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(tx.timestamp))}",
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-
-                                            TransactionAmountText(
-                                                type = tx.type,
-                                                amount = tx.amount,
-                                                fontSize = 13.sp
-                                            )
-                                        }
-                                    }
+                            // Same row as every other transaction list (icon, signed amount, transfer direction).
+                            val categoryById = categories.associateBy { it.id }
+                            val accountById = accounts.associateBy { it.id }
+                            AppCard(contentPadding = Space.md) {
+                                selectedDayTransactions.forEachIndexed { i, tx ->
+                                    if (i > 0) RowDivider()
+                                    TransactionRow(
+                                        tx = tx,
+                                        category = categoryById[tx.categoryId],
+                                        account = accountById[tx.sourceAccountId],
+                                        destination = tx.destinationAccountId?.let { accountById[it] }
+                                    )
                                 }
                             }
                         }
@@ -681,9 +633,9 @@ fun CalendarDayCell(
                 if (incomeAmount > 0) {
                     Text(
                         text = "+${formatCompactVnd(incomeAmount)}",
-                        fontSize = 8.sp,
+                fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF059669),
+                        color = AppPalette.income,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -692,9 +644,9 @@ fun CalendarDayCell(
                 if (expenseAmount > 0) {
                     Text(
                         text = "-${formatCompactVnd(expenseAmount)}",
-                        fontSize = 8.sp,
+                fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFDC2626),
+                        color = AppPalette.expense,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

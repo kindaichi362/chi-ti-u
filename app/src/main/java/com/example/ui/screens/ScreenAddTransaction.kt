@@ -81,7 +81,7 @@ import com.example.ui.components.CategoryTile
 import com.example.ui.components.ChoiceChip
 import com.example.ui.components.PrimaryButton
 import com.example.ui.components.SegmentedTabs
-import com.example.ui.components.VoiceTransactionBottomSheet
+import com.example.ui.components.InlineVoiceInput
 import com.example.ui.components.formatVnd
 import com.example.ui.screens.paytrack.PayTrackBottomSheet
 import com.example.ui.theme.AppPalette
@@ -97,7 +97,7 @@ import java.util.Locale
 import java.util.TimeZone
 
 private val TYPES = listOf(TransactionType.EXPENSE, TransactionType.INCOME, TransactionType.TRANSFER)
-private val QUICK_AMOUNTS = listOf(10_000L, 20_000L, 50_000L, 100_000L, 200_000L, 500_000L)
+private val QUICK_AMOUNTS = listOf(20_000L, 50_000L, 100_000L, 500_000L)
 
 /**
  * Add a transaction. The amount is the biggest thing on screen; frequent categories are one tap;
@@ -110,6 +110,7 @@ fun ScreenAddTransaction(
     onNavigateBack: () -> Unit,
     initialType: TransactionType = TransactionType.EXPENSE,
     initialSourceAccountId: Long? = null,
+    startWithVoice: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val p = AppPalette
@@ -131,7 +132,8 @@ fun ScreenAddTransaction(
     var showDate by remember { mutableStateOf(false) }
     var showAllCategories by remember { mutableStateOf(false) }
     var showQr by remember { mutableStateOf(false) }
-    var showVoice by remember { mutableStateOf(false) }
+    var voiceTrigger by remember { mutableStateOf(if (startWithVoice) 1 else 0) }
+    var voiceResult by remember { mutableStateOf("") }
 
     val amount = amountDigits.toDoubleOrNull() ?: 0.0
     if (sourceId == null && accounts.isNotEmpty()) sourceId = accounts.first().id
@@ -144,10 +146,10 @@ fun ScreenAddTransaction(
         val usage = transactions.filter { it.timestamp >= since && it.categoryId != null }.groupingBy { it.categoryId!! }.eachCount()
         categories.filter { it.type == catType }
             .sortedWith(compareByDescending<Category> { it.isPriority }.thenByDescending { usage[it.id] ?: 0 }.thenBy { it.displayOrder })
-            .take(8)
+            .take(4)
     }
     val selectedCategory = categories.firstOrNull { it.id == categoryId }
-    val shownCategories = if (selectedCategory != null && selectedCategory !in frequent) listOf(selectedCategory) + frequent.take(7) else frequent
+    val shownCategories = if (selectedCategory != null && selectedCategory !in frequent) listOf(selectedCategory) + frequent.take(3) else frequent
 
     fun save() {
         if (saving) return
@@ -174,9 +176,9 @@ fun ScreenAddTransaction(
         onNavigateBack()
     }
 
-    fun applyQuickText() {
-        val parsed = viewModel.parseNaturalLanguage(quickText) ?: run {
-            Toast.makeText(context, "Chưa đọc được số tiền trong câu", Toast.LENGTH_SHORT).show(); return
+    fun applyPhrase(phrase: String): Boolean {
+        val parsed = viewModel.parseNaturalLanguage(phrase) ?: run {
+            Toast.makeText(context, "Chưa đọc được số tiền trong câu", Toast.LENGTH_SHORT).show(); return false
         }
         type = parsed.type
         amountDigits = parsed.amount.toLong().toString()
@@ -184,8 +186,8 @@ fun ScreenAddTransaction(
         sourceId = parsed.sourceAccountId
         parsed.destinationAccountId?.let { destId = it }
         note = parsed.note
-        quickText = ""
         focus.clearFocus()
+        return true
     }
 
     Column(modifier = modifier.fillMaxSize().background(p.background).statusBarsPadding()) {
@@ -198,9 +200,6 @@ fun ScreenAddTransaction(
                     Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Quét mã QR", tint = p.textPrimary)
                 }
             }
-            IconButton(onClick = { showVoice = true }, modifier = Modifier.testTag("btn_voice_add_screen")) {
-                Icon(Icons.Outlined.Mic, contentDescription = "Nhập bằng giọng nói", tint = p.accent)
-            }
         }
 
         Column(
@@ -209,7 +208,7 @@ fun ScreenAddTransaction(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Space.page),
-            verticalArrangement = Arrangement.spacedBy(Space.lg)
+            verticalArrangement = Arrangement.spacedBy(Space.md)
         ) {
             SegmentedTabs(
                 options = listOf("Chi", "Thu", "Chuyển"),
@@ -221,7 +220,7 @@ fun ScreenAddTransaction(
             )
 
             // Amount: the most prominent field
-            AppCard(contentPadding = Space.lg) {
+            AppCard(contentPadding = Space.md) {
                 Text("Số tiền", fontSize = TextSize.sm, color = p.textSecondary)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val shown = if (amountDigits.isEmpty()) "" else java.text.NumberFormat.getNumberInstance(Locale.forLanguageTag("vi-VN")).format(amountDigits.toLong())
@@ -231,7 +230,7 @@ fun ScreenAddTransaction(
                             value = shown,
                             onValueChange = { v -> amountDigits = v.filter(Char::isDigit).trimStart('0').take(13) },
                             singleLine = true,
-                            textStyle = MoneyStyle.copy(fontSize = 36.sp, fontWeight = FontWeight.Bold,
+                            textStyle = MoneyStyle.copy(fontSize = 32.sp, fontWeight = FontWeight.Bold,
                                 color = when (type) { TransactionType.EXPENSE -> p.expense; TransactionType.INCOME -> p.income; else -> p.textPrimary }),
                             cursorBrush = SolidColor(p.accent),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
@@ -241,13 +240,12 @@ fun ScreenAddTransaction(
                     }
                     Text("₫", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = p.textSecondary)
                 }
-                Spacer(Modifier.height(Space.md))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    QUICK_AMOUNTS.forEach { q ->
+                Spacer(Modifier.height(Space.xs))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+                    items(QUICK_AMOUNTS) { q ->
                         ChoiceChip(label = "+" + if (q >= 1_000_000) "${q / 1_000_000}tr" else "${q / 1000}k", selected = false,
                             onClick = { amountDigits = ((amountDigits.toLongOrNull() ?: 0L) + q).toString() })
                     }
-                    if (amountDigits.isNotEmpty()) ChoiceChip(label = "Xóa", selected = false, onClick = { amountDigits = "" })
                 }
             }
 
@@ -267,11 +265,19 @@ fun ScreenAddTransaction(
                         textStyle = TextStyle(fontSize = TextSize.sm, color = p.textPrimary),
                         cursorBrush = SolidColor(p.accent),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { applyQuickText() }),
+                        keyboardActions = KeyboardActions(onDone = { if (applyPhrase(quickText)) quickText = "" }),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                if (quickText.isNotBlank()) TextButton(onClick = { applyQuickText() }) { Text("Điền", color = p.accent, fontWeight = FontWeight.SemiBold) }
+                if (quickText.isNotBlank()) TextButton(onClick = { if (applyPhrase(quickText)) quickText = "" }) { Text("Điền", color = p.accent, fontWeight = FontWeight.SemiBold) }
+                IconButton(onClick = { voiceTrigger++ }, modifier = Modifier.testTag("btn_voice_add_screen")) {
+                    Icon(Icons.Outlined.Mic, contentDescription = "Nhập bằng giọng nói", tint = p.accent)
+                }
+            }
+            if (voiceTrigger > 0) {
+                InlineVoiceInput(voiceTrigger) { phrase ->
+                    if (applyPhrase(phrase)) voiceResult = phrase else quickText = phrase
+                }
             }
 
             // Category (not for transfers)
@@ -311,32 +317,28 @@ fun ScreenAddTransaction(
                 }
             }
 
-            // Date and note
+            // Date and note share one line; both remain editable.
             AppCard(contentPadding = Space.md) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().clip(Radius.sm).clickable(role = Role.Button) { showDate = true }.heightIn(min = 48.dp).padding(horizontal = Space.xs),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Outlined.CalendarToday, contentDescription = null, tint = p.textSecondary, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(Space.md))
-                    Text("Ngày", fontSize = TextSize.base, color = p.textSecondary, modifier = Modifier.weight(1f))
-                    Text(dateLabel(timestamp), fontSize = TextSize.base, fontWeight = FontWeight.Medium, color = p.textPrimary)
-                }
-                Box(Modifier.fillMaxWidth().height(1.dp).background(p.borderSubtle))
-                Box(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = Space.xs), contentAlignment = Alignment.CenterStart) {
-                    if (note.isEmpty()) Text("Ghi chú (không bắt buộc)", fontSize = TextSize.base, color = p.textSecondary)
-                    BasicTextField(
-                        value = note,
-                        onValueChange = { note = it },
-                        textStyle = TextStyle(fontSize = TextSize.base, color = p.textPrimary),
-                        cursorBrush = SolidColor(p.accent),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = Space.md)
-                    )
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) {
+                        if (note.isEmpty()) Text("Ghi chú", fontSize = TextSize.base, color = p.textSecondary)
+                        BasicTextField(
+                            value = note,
+                            onValueChange = { note = it },
+                            textStyle = TextStyle(fontSize = TextSize.base, color = p.textPrimary),
+                            cursorBrush = SolidColor(p.accent),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = Space.xs)
+                        )
+                    }
+                    TextButton(onClick = { showDate = true }) {
+                        Icon(Icons.Outlined.CalendarToday, contentDescription = null, tint = p.accent, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(Space.xs))
+                        Text(dateLabel(timestamp), fontSize = TextSize.xs, color = p.accent, maxLines = 1)
+                    }
                 }
             }
-            Spacer(Modifier.height(Space.sm))
         }
 
         // Save: pinned above the keyboard and the gesture bar
@@ -349,7 +351,7 @@ fun ScreenAddTransaction(
                 .padding(horizontal = Space.page, vertical = Space.md)
         ) {
             PrimaryButton(
-                text = if (amount > 0) "Lưu · ${formatVnd(amount)}" else "Lưu",
+                text = if (amount > 0) "${if (voiceResult.isNotBlank()) "Xác nhận" else "Lưu"} · ${formatVnd(amount)}" else "Lưu",
                 icon = Icons.Default.Check,
                 onClick = { save() },
                 enabled = !saving && amount > 0,
@@ -426,15 +428,6 @@ fun ScreenAddTransaction(
         )
     }
 
-    if (showVoice) {
-        // The sheet shows what it understood and saves only after the user confirms.
-        VoiceTransactionBottomSheet(
-            viewModel = viewModel,
-            onDismiss = { showVoice = false },
-            onTransactionSaved = { showVoice = false; onNavigateBack() },
-            autoStart = true
-        )
-    }
 }
 
 @Composable
@@ -446,13 +439,13 @@ private fun CategoryCell(cat: Category, selected: Boolean, modifier: Modifier = 
             .background(if (selected) p.accentSoft else p.card)
             .border(if (selected) 1.5.dp else 1.dp, if (selected) p.accent else p.border, Radius.md)
             .clickable(role = Role.RadioButton, onClick = onClick)
-            .height(84.dp)
+            .height(66.dp)
             .padding(vertical = Space.sm, horizontal = Space.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        CategoryTile(cat, size = 36.dp)
-        Spacer(Modifier.height(6.dp))
+        CategoryTile(cat, size = 28.dp)
+        Spacer(Modifier.height(3.dp))
         Text(cat.name, fontSize = 12.sp, lineHeight = 15.sp, color = p.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
     }

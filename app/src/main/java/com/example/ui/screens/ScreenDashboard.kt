@@ -23,7 +23,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
@@ -103,10 +102,6 @@ fun ScreenDashboard(
         // A. Header
         item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Box(Modifier.size(40.dp).clip(CircleShape).background(p.accentSoft), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Outlined.Person, contentDescription = "Tài khoản của bạn", tint = p.accent, modifier = Modifier.size(22.dp))
-                }
-                Spacer(Modifier.width(Space.md))
                 Text("Tổng quan", fontSize = TextSize.xl, fontWeight = FontWeight.Bold, color = p.textPrimary, modifier = Modifier.weight(1f), maxLines = 1)
                 IconButton(onClick = { viewModel.toggleBalancesHidden() }) {
                     Icon(if (hidden) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,

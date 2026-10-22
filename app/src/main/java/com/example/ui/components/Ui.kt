@@ -363,15 +363,17 @@ fun IconTile(
     }
 }
 
-/** Category icon tile: expense on blush, income on mint, coloured by meaning (not per category). */
+/** Category icon tile uses the category colour so nearby categories are easy to distinguish. */
 @Composable
 fun CategoryTile(category: Category?, modifier: Modifier = Modifier, size: Dp = 40.dp, type: CategoryType? = category?.type) {
     val p = AppPalette
     val income = type == CategoryType.INCOME
+    val base = category?.colorHex?.let { parseColorSafe(it, if (income) p.income else p.expense) }
+        ?: if (income) p.income else p.expense
     IconTile(
         icon = categoryIcon(category),
-        tint = if (income) p.income else p.expense,
-        background = if (income) p.accentSoft else p.expenseSoft,
+        tint = androidx.compose.ui.graphics.lerp(base, p.textPrimary, if (p.isDark) 0.14f else 0.32f),
+        background = base.copy(alpha = if (p.isDark) 0.22f else 0.14f),
         modifier = modifier,
         size = size
     )

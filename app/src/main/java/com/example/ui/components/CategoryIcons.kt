@@ -204,10 +204,38 @@ private val byIconName: Map<String, ImageVector> = mapOf(
     "phone_android" to Icons.Outlined.PhoneAndroid, "savings" to Icons.Outlined.Savings
 )
 
+data class CategoryIconOption(val key: String, val label: String, val icon: ImageVector)
+
+val categoryIconOptions = listOf(
+    CategoryIconOption("custom_food", "Ăn uống", Icons.Outlined.Restaurant),
+    CategoryIconOption("custom_cafe", "Cà phê", Icons.Outlined.LocalCafe),
+    CategoryIconOption("custom_cart", "Mua sắm", Icons.Outlined.ShoppingCart),
+    CategoryIconOption("custom_home", "Nhà ở", Icons.Outlined.Home),
+    CategoryIconOption("custom_light", "Điện", Icons.Outlined.Lightbulb),
+    CategoryIconOption("custom_water", "Nước", Icons.Outlined.WaterDrop),
+    CategoryIconOption("custom_car", "Đi lại", Icons.Outlined.LocalTaxi),
+    CategoryIconOption("custom_fuel", "Xăng", Icons.Outlined.LocalGasStation),
+    CategoryIconOption("custom_health", "Sức khỏe", Icons.Outlined.MedicalServices),
+    CategoryIconOption("custom_school", "Học tập", Icons.Outlined.School),
+    CategoryIconOption("custom_movie", "Giải trí", Icons.Outlined.Movie),
+    CategoryIconOption("custom_flight", "Du lịch", Icons.Outlined.Flight),
+    CategoryIconOption("custom_gift", "Quà tặng", Icons.Outlined.CardGiftcard),
+    CategoryIconOption("custom_child", "Con cái", Icons.Outlined.ChildCare),
+    CategoryIconOption("custom_work", "Công việc", Icons.Outlined.BusinessCenter),
+    CategoryIconOption("custom_phone", "Điện thoại", Icons.Outlined.PhoneAndroid),
+    CategoryIconOption("custom_wallet", "Thu nhập", Icons.Outlined.Payments),
+    CategoryIconOption("custom_savings", "Tiết kiệm", Icons.Outlined.Savings),
+    CategoryIconOption("custom_repair", "Sửa chữa", Icons.Outlined.Handyman),
+    CategoryIconOption("custom_other", "Khác", Icons.Outlined.Category)
+)
+
+private val customIcons = categoryIconOptions.associate { it.key to it.icon }
+
 /** The icon for a category: its own, else its group's, else a generic one. */
 fun categoryIcon(category: Category?): ImageVector {
     if (category == null) return Icons.Outlined.Category
-    return byName[category.name]
+    return customIcons[category.iconName]
+        ?: byName[category.name]
         ?: category.groupName?.let { byGroup[it] }
         ?: byIconName[category.iconName]
         ?: Icons.Outlined.Category

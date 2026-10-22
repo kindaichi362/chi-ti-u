@@ -72,6 +72,7 @@ import com.example.data.model.DebtType
 import com.example.data.model.Goal
 import com.example.data.model.RecurringBill
 import com.example.ui.components.formatVnd
+import com.example.ui.components.CategoryChoiceChip
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
 import com.example.ui.theme.TransferBlue
@@ -279,11 +280,9 @@ fun ScreenDebtsAndGoals(
                     Text("Danh mục", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(billCategories, key = { it.id }) { cat ->
-                            FilterChip(
-                                selected = billCategoryId == cat.id,
-                                onClick = { billCategoryId = cat.id },
-                                label = { Text("${cat.emoji ?: ""} ${cat.name}".trim(), fontSize = 12.sp) }
-                            )
+                            CategoryChoiceChip(category = cat, selected = billCategoryId == cat.id) {
+                                billCategoryId = cat.id
+                            }
                         }
                     }
                     Text("Trả từ tài khoản", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)

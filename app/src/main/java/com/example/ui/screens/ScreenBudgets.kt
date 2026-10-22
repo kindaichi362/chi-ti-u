@@ -242,14 +242,15 @@ fun ScreenReports(
             TextButton(onClick = onOpenCategories) { Text("Danh mục", color = p.accent, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold) }
         }
         SegmentedTabs(
-            options = listOf("Phân tích", "Ngân sách"),
+            options = listOf("Phân tích", "Lịch thu chi", "Ngân sách"),
             selected = selectedTab,
             onSelect = onSelectTab,
             modifier = Modifier.padding(horizontal = Space.page, vertical = Space.sm)
         )
         MonthStepper(selectedOffset = offset, onSelect = viewModel::selectMonth, modifier = Modifier.padding(horizontal = Space.sm))
         when (selectedTab) {
-            0 -> ScreenAnalytics(viewModel = viewModel, onOpenBudgets = { onSelectTab(1) })
+            0 -> ScreenAnalytics(viewModel = viewModel, onOpenBudgets = { onSelectTab(2) })
+            1 -> ScreenAnalytics(viewModel = viewModel, calendarOnly = true)
             else -> ScreenBudgets(viewModel = viewModel)
         }
     }

@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -36,13 +37,18 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -52,11 +58,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.TransactionType
-import com.example.ui.components.VoiceTransactionBottomSheet
+import com.example.data.update.AppUpdate
+import com.example.data.update.AvailableUpdate
 import com.example.ui.screens.ScreenAIAssistant
 import com.example.ui.screens.ScreenAccountDetail
 import com.example.ui.screens.ScreenAccounts
@@ -72,6 +80,7 @@ import com.example.ui.theme.ChiTieuThanhPhatTheme
 import com.example.ui.theme.TextSize
 import com.example.ui.viewmodel.FinanceViewModel
 import com.example.ui.viewmodel.ThemeMode
+import kotlinx.coroutines.launch
 
 enum class MainDestination(val label: String, val icon: ImageVector?, val tag: String) {
     DASHBOARD("Tổng quan", Icons.Outlined.Home, "tab_dashboard"),
@@ -116,9 +125,38 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination = MainDestination.DASHBOARD, startAccountId: Long? = null) {
+    val context = LocalContext.current
+    val updateService = remember(context) { AppUpdate(context) }
+    val updateScope = rememberCoroutineScope()
+    var updateCheckTrigger by remember { mutableIntStateOf(0) }
+    var availableUpdate by remember { mutableStateOf<AvailableUpdate?>(null) }
+    var downloadedUpdate by remember { mutableStateOf<File?>(null) }
+    var updateBusy by remember { mutableStateOf(false) }
+    var updateMessage by remember { mutableStateOf("") }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(updateCheckTrigger) {
+        try {
+            val found = updateService.check()
+            availableUpdate = found
+            if (found != null) {
+                downloadedUpdate = null
+                updateMessage = "Bản ${found.versionName} đã sẵn sàng. Tải và xác nhận cài đặt để giữ nguyên dữ liệu."
+                showUpdateDialog = true
+            } else if (updateCheckTrigger > 0) {
+                updateMessage = "Bạn đang dùng bản mới nhất."
+                showUpdateDialog = true
+            }
+        } catch (e: Exception) {
+            if (updateCheckTrigger > 0) {
+                updateMessage = "Chưa kiểm tra được bản mới: ${e.message ?: "lỗi kết nối"}"
+                showUpdateDialog = true
+            }
+        }
+    }
     val backStack = remember { mutableStateListOf(MainDestination.DASHBOARD).apply { if (startDestination != MainDestination.DASHBOARD) add(startDestination) } }
     val currentDestination = backStack.lastOrNull() ?: MainDestination.DASHBOARD
-    var showVoiceBottomSheet by remember { mutableStateOf(false) }
+    var startAddWithVoice by remember { mutableStateOf(false) }
     var reportsTab by rememberSaveable { mutableStateOf(0) }
     var pendingQuestion by remember { mutableStateOf<String?>(null) }
     var openAccountId by rememberSaveable { mutableStateOf(startAccountId) }
@@ -143,6 +181,7 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
     }
 
     fun openAdd(type: TransactionType = TransactionType.EXPENSE, sourceAccountId: Long? = null) {
+        startAddWithVoice = false
         addType = type
         addSourceAccountId = sourceAccountId
         navigateTo(MainDestination.ADD_TRANSACTION)
@@ -157,7 +196,7 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
         containerColor = AppPalette.background,
         // Voice entry is always one tap away on every main tab.
         floatingActionButton = {
-            if (showBottomBar) VoiceButton(onClick = { showVoiceBottomSheet = true })
+            if (showBottomBar) VoiceButton(onClick = { openAdd(); startAddWithVoice = true })
         },
         bottomBar = {
             if (showBottomBar) {
@@ -165,7 +204,7 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
                     current = currentDestination,
                     onSelect = { navigateTo(it) },
                     onAdd = { openAdd() },
-                    onVoice = { showVoiceBottomSheet = true }
+                    onVoice = { openAdd(); startAddWithVoice = true }
                 )
             }
         }
@@ -180,7 +219,7 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
                     onNavigateToAddTransaction = { openAdd() },
                     onNavigateToAccounts = { navigateTo(MainDestination.ACCOUNTS) },
                     onOpenAccount = { openAccountId = it; navigateTo(MainDestination.ACCOUNT_DETAIL) },
-                    onNavigateToBudgets = { reportsTab = 1; navigateTo(MainDestination.REPORTS) },
+                    onNavigateToBudgets = { reportsTab = 2; navigateTo(MainDestination.REPORTS) },
                     onNavigateToAiAssistant = { q -> pendingQuestion = q; navigateTo(MainDestination.AI_ASSISTANT) },
                     onNavigateToPlans = { navigateTo(MainDestination.PLANS) },
                     modifier = content
@@ -188,7 +227,7 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
                 MainDestination.TRANSACTIONS -> ScreenTransactions(
                     viewModel = viewModel,
                     onNavigateToAddTransaction = { openAdd() },
-                    onVoice = { showVoiceBottomSheet = true },
+                    onVoice = { openAdd(); startAddWithVoice = true },
                     modifier = content
                 )
                 MainDestination.REPORTS -> ScreenReports(
@@ -203,6 +242,7 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
                     onOpenAccount = { openAccountId = it; navigateTo(MainDestination.ACCOUNT_DETAIL) },
                     onTransfer = { openAdd(TransactionType.TRANSFER) },
                     onOpenPlans = { navigateTo(MainDestination.PLANS) },
+                    onOpenCategories = { navigateTo(MainDestination.CATEGORIES) },
                     onOpenSettings = { navigateTo(MainDestination.SETTINGS) },
                     modifier = content
                 )
@@ -217,6 +257,7 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
                     viewModel = viewModel,
                     initialType = addType,
                     initialSourceAccountId = addSourceAccountId,
+                    startWithVoice = startAddWithVoice,
                     onNavigateBack = { navigateBack() }
                 )
                 MainDestination.AI_ASSISTANT -> ScreenAIAssistant(
@@ -239,20 +280,36 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
                     onBack = { navigateBack() },
                     onOpenCategories = { navigateTo(MainDestination.CATEGORIES) },
                     onOpenPlans = { navigateTo(MainDestination.PLANS) },
+                    onCheckUpdate = { updateCheckTrigger++ },
                     modifier = content
                 )
             }
         }
     }
 
-    if (showVoiceBottomSheet) {
-        VoiceTransactionBottomSheet(
-            viewModel = viewModel,
-            onDismiss = { showVoiceBottomSheet = false },
-            onTransactionSaved = { showVoiceBottomSheet = false },
-            autoStart = true
+    if (showUpdateDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!updateBusy) showUpdateDialog = false },
+            title = { Text(if (availableUpdate != null) "Cập nhật ứng dụng" else "Phiên bản ứng dụng") },
+            text = { Text(if (updateBusy) "Đang tải và kiểm tra bản cập nhật…" else updateMessage) },
+            confirmButton = {
+                val update = availableUpdate
+                if (update != null) TextButton(enabled = !updateBusy, onClick = {
+                    updateScope.launch {
+                        updateBusy = true
+                        try {
+                            val apk = downloadedUpdate ?: updateService.download(update).also { downloadedUpdate = it }
+                            if (updateService.install(apk)) showUpdateDialog = false
+                            else updateMessage = "Hãy cho phép cài ứng dụng từ nguồn này, sau đó quay lại bấm Cài đặt."
+                        } catch (e: Exception) { updateMessage = "Cập nhật thất bại: ${e.message ?: "lỗi không rõ"}" }
+                        updateBusy = false
+                    }
+                }) { Text(if (downloadedUpdate == null) "Tải và cài đặt" else "Cài đặt") }
+            },
+            dismissButton = { TextButton(enabled = !updateBusy, onClick = { showUpdateDialog = false }) { Text("Để sau") } }
         )
     }
+
 }
 
 /**
@@ -301,27 +358,21 @@ private fun BottomBar(
     }
 }
 
-/** Floating "Nói" pill above the bottom bar: opens voice entry (the user reviews before saving). */
+/** One-tap voice entry above the bottom bar. */
 @Composable
 private fun VoiceButton(onClick: () -> Unit) {
     val p = AppPalette
-    Row(
+    Box(
         modifier = Modifier
-            .shadow(6.dp, CircleShape)
+            .shadow(8.dp, CircleShape)
             .clip(CircleShape)
-            .background(p.card)
-            .border(1.dp, p.border, CircleShape)
+            .background(p.accent)
             .clickable(role = Role.Button, onClickLabel = "Nhập nhanh bằng giọng nói", onClick = onClick)
-            .heightIn(min = 48.dp)
-            .padding(start = 14.dp, end = 18.dp)
+            .size(56.dp)
             .testTag("fab_voice_transaction"),
-        verticalAlignment = Alignment.CenterVertically
+        contentAlignment = Alignment.Center
     ) {
-        Box(Modifier.size(32.dp).background(p.accent, CircleShape), contentAlignment = Alignment.Center) {
-            Icon(Icons.Outlined.Mic, contentDescription = null, tint = p.onAccent, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(8.dp))
-        Text("Nói", fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = p.textPrimary)
+        Icon(Icons.Outlined.Mic, contentDescription = "Nhập nhanh bằng giọng nói", tint = p.onAccent, modifier = Modifier.size(28.dp))
     }
 }
 

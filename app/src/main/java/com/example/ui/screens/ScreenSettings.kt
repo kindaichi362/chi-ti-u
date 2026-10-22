@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,6 +20,10 @@ import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -26,10 +31,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.ui.components.AccountLogo
 import com.example.ui.components.AppCard
@@ -44,6 +54,8 @@ import com.example.ui.theme.Space
 import com.example.ui.theme.TextSize
 import com.example.ui.viewmodel.FinanceViewModel
 import com.example.ui.viewmodel.ThemeMode
+import com.example.data.backup.VpsBackup
+import kotlinx.coroutines.launch
 
 /** Settings: appearance, hidden balances, archived accounts, and shortcuts to category / plan management. */
 @Composable
@@ -52,6 +64,7 @@ fun ScreenSettings(
     onBack: () -> Unit,
     onOpenCategories: () -> Unit,
     onOpenPlans: () -> Unit,
+    onCheckUpdate: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val p = AppPalette
@@ -59,6 +72,35 @@ fun ScreenSettings(
     val mode by viewModel.themeMode.collectAsState()
     val hidden by viewModel.balancesHidden.collectAsState()
     val archived by viewModel.archivedAccounts.collectAsState()
+    val backup = remember(context) { VpsBackup(context) }
+    val scope = rememberCoroutineScope()
+    var backupToken by remember { mutableStateOf(backup.token) }
+    var backupBusy by remember { mutableStateOf(false) }
+    var backupStatus by remember { mutableStateOf("") }
+    var confirmRestore by remember { mutableStateOf(false) }
+
+    if (confirmRestore) {
+        AlertDialog(
+            onDismissRequest = { confirmRestore = false },
+            title = { Text("Khôi phục từ VPS?") },
+            text = { Text("Toàn bộ dữ liệu hiện tại trên điện thoại sẽ được thay bằng bản sao lưu mới nhất. App sẽ giữ một bản dự phòng trên máy trước khi thay.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRestore = false
+                    backup.token = backupToken
+                    backupBusy = true
+                    scope.launch {
+                        backupStatus = try {
+                            backup.downloadAndRestore()
+                            "Đã khôi phục dữ liệu từ VPS"
+                        } catch (e: Exception) { "Khôi phục thất bại: ${e.message ?: "Lỗi không rõ"}" }
+                        backupBusy = false
+                    }
+                }) { Text("Khôi phục") }
+            },
+            dismissButton = { TextButton(onClick = { confirmRestore = false }) { Text("Hủy") } }
+        )
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize().background(p.background),
@@ -149,6 +191,52 @@ fun ScreenSettings(
                         }
                     }
                 )
+            }
+        }
+
+        item {
+            SectionHeader("Cập nhật ứng dụng")
+            AppCard {
+                Text("Phiên bản hiện tại ${com.example.BuildConfig.VERSION_NAME}", fontSize = TextSize.sm, color = p.textSecondary)
+                Spacer(Modifier.height(Space.sm))
+                Button(onClick = onCheckUpdate) { Text("Kiểm tra bản mới") }
+            }
+        }
+
+        item {
+            SectionHeader("Sao lưu VPS")
+            Spacer(Modifier.height(Space.xs))
+            AppCard {
+                Text("Sao lưu thủ công dữ liệu của điện thoại này lên VPS.", fontSize = TextSize.sm, color = p.textSecondary)
+                Spacer(Modifier.height(Space.md))
+                OutlinedTextField(
+                    value = backupToken,
+                    onValueChange = { backupToken = it },
+                    label = { Text("Mã kết nối VPS") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(Space.md))
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                    Button(enabled = !backupBusy && backupToken.isNotBlank(), onClick = {
+                        backup.token = backupToken
+                        backupBusy = true
+                        scope.launch {
+                            backupStatus = try {
+                                "Đã lưu bản sao ${backup.upload()}"
+                            } catch (e: Exception) { "Sao lưu thất bại: ${e.message ?: "Lỗi không rõ"}" }
+                            backupBusy = false
+                        }
+                    }) { Text("Sao lưu ngay") }
+                    OutlinedButton(enabled = !backupBusy && backupToken.isNotBlank(), onClick = { confirmRestore = true }) {
+                        Text("Khôi phục")
+                    }
+                }
+                if (backupStatus.isNotBlank()) {
+                    Spacer(Modifier.height(Space.sm))
+                    Text(backupStatus, fontSize = TextSize.sm, color = p.textSecondary)
+                }
             }
         }
     }

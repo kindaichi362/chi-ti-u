@@ -56,4 +56,7 @@ interface CategoryDao {
 
     @Delete
     suspend fun deleteCategory(category: Category)
+
+    @Query("SELECT (SELECT COUNT(*) FROM transactions WHERE categoryId = :id) + (SELECT COUNT(*) FROM budgets WHERE categoryId = :id) + (SELECT COUNT(*) FROM recurring_bills WHERE categoryId = :id) + (SELECT COUNT(*) FROM categories WHERE parentId = :id)")
+    suspend fun countReferences(id: Long): Int
 }

@@ -177,7 +177,13 @@ class FinanceRepository(
     suspend fun setCategoryPriority(categoryId: Long, isPriority: Boolean) =
         categoryDao.setCategoryPriority(categoryId, isPriority)
 
-    suspend fun deleteCategory(category: Category) = categoryDao.deleteCategory(category)
+    suspend fun deleteCategoryIfUnused(category: Category): Boolean = database.withTransaction {
+        if (categoryDao.countReferences(category.id) > 0 || categoryDao.getCategoryById(category.id) == null) {
+            return@withTransaction false
+        }
+        categoryDao.deleteCategory(category)
+        true
+    }
 
     /** One budget per category per month: setting it again replaces the limit instead of duplicating. */
     suspend fun upsertBudget(categoryId: Long, amountLimit: Double, monthYear: String) = database.withTransaction {
