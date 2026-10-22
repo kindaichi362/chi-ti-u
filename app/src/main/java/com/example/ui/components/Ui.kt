@@ -370,6 +370,21 @@ fun CategoryTile(category: Category?, modifier: Modifier = Modifier, size: Dp = 
     val income = type == CategoryType.INCOME
     val base = category?.colorHex?.let { parseColorSafe(it, if (income) p.income else p.expense) }
         ?: if (income) p.income else p.expense
+    // The colour emoji of the category is its icon everywhere (same mark as the category chips);
+    // the outlined vector is only a fallback for categories without one.
+    val emoji = category?.emoji?.takeIf { it.isNotBlank() }
+    if (emoji != null) {
+        Box(
+            modifier = modifier
+                .size(size)
+                .clip(RoundedCornerShape(size * 0.3f))
+                .background(base.copy(alpha = if (p.isDark) 0.22f else 0.14f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(emoji, fontSize = (size.value * 0.5f).sp, lineHeight = (size.value * 0.6f).sp)
+        }
+        return
+    }
     IconTile(
         icon = categoryIcon(category),
         tint = androidx.compose.ui.graphics.lerp(base, p.textPrimary, if (p.isDark) 0.14f else 0.32f),

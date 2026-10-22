@@ -327,7 +327,7 @@ private fun ShareRow(s: CategoryShare, total: Double) {
     val p = AppPalette
     val ratio = s.amount / total
     Row(Modifier.fillMaxWidth().padding(vertical = Space.md), verticalAlignment = Alignment.CenterVertically) {
-        IconTile(categoryIcon(s.category), tint = s.color, background = s.color.copy(alpha = 0.14f), size = 36.dp)
+        CategoryTile(s.category, size = 36.dp)
         Spacer(Modifier.width(Space.md))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

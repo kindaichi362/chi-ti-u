@@ -1,5 +1,7 @@
 package com.example
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
 import android.app.Application
 import android.graphics.Bitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -176,4 +178,22 @@ class ScreenshotTest {
     @Test @Config(qualifiers = "w360dp-h780dp-xxhdpi") fun dashboardNarrow() = run(MainDestination.DASHBOARD, "_360")
     @Test fun settings() = run(MainDestination.SETTINGS)
     @Test @Config(qualifiers = "w393dp-h1800dp-xxhdpi") fun cardDetail() = run(MainDestination.ACCOUNT_DETAIL, "_card", accountId = 5)
+
+    /** The recording window shown while the mic is open. */
+    @Test fun voiceRecording() {
+        compose.setContent {
+            ChiTieuThanhPhatTheme(darkTheme = false) {
+                androidx.compose.foundation.layout.Box(
+                    androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x99000000)),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) { com.example.ui.components.RecordingPanel(false, "Ăn sáng 30 nghìn tiền mặt", 0.6f, {}, {}) }
+            }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        val root = compose.activity.window.decorView
+        val bmp = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+        compose.runOnUiThread { root.draw(android.graphics.Canvas(bmp)) }
+        File(outDir, "voice_recording.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
 }

@@ -58,12 +58,18 @@ fun CategoryIconBadge(
             .background(base.copy(alpha = if (palette.isDark) 0.22f else 0.14f)),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = categoryIcon(category),
-            contentDescription = category.name,
-            tint = catColor,
-            modifier = Modifier.size(size * 0.52f)
-        )
+        val emoji = category.emoji?.takeIf { it.isNotBlank() }
+        if (emoji != null) {
+            // Same colour mark as everywhere else in the app.
+            Text(emoji, fontSize = (size.value * 0.5f).sp, lineHeight = (size.value * 0.6f).sp)
+        } else {
+            Icon(
+                imageVector = categoryIcon(category),
+                contentDescription = category.name,
+                tint = catColor,
+                modifier = Modifier.size(size * 0.52f)
+            )
+        }
     }
 }
 
