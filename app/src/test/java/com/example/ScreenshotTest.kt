@@ -24,6 +24,7 @@ import com.example.ui.viewmodel.FinanceViewModel
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -62,6 +63,10 @@ class ScreenshotTest {
         val momo = repo.insertAccount(Account(name = "Ví MoMo", type = AccountType.E_WALLET, balance = 850_000.0, bankId = "momo", bankCode = "MOMO"))
         val card = repo.insertAccount(Account(name = "Thẻ Techcombank Visa", type = AccountType.CREDIT_CARD, balance = 0.0, bankId = "tcb",
             accountNumberMasked = "•••• 4021", creditLimit = 50_000_000.0, statementDay = 20, dueDay = dueDay))
+        repo.addInstallment(com.example.data.model.CardInstallment(
+            cardId = card, name = "Tai nghe Sony", totalAmount = 6_500_000.0, monthlyAmount = 1_200_000.0, monthCount = 6,
+            firstDueDate = daysAgo(-3)
+        ))
         repo.reconcileAccountBalance(1, 1_250_000.0)
 
         fun tx(type: TransactionType, amount: Double, acc: Long, cat: String?, note: String, d: Int, h: Int = 12) = runBlocking {
@@ -119,6 +124,36 @@ class ScreenshotTest {
     }
 
     @Test fun dashboard() = run(MainDestination.DASHBOARD)
+    @Test fun dashboardExpenseOpensMonthTransactions() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        AppDatabase.resetForTests()
+        app.deleteDatabase("chi_tieu_thanh_phat_db")
+        val vm = FinanceViewModel(app)
+        seed(vm)
+        shoot("dashboard_before_expense", vm, MainDestination.DASHBOARD)
+        compose.onNodeWithTag("monthly_expense_card").performClick()
+        compose.waitForIdle()
+        assertEquals(TransactionType.EXPENSE, vm.txFilter.value.type)
+        assertEquals(0, vm.txFilter.value.monthOffset)
+        assertEquals(true, vm.txFilter.value.settledOnly)
+        compose.onNodeWithText("Chi trong tháng").assertExists()
+        compose.onNodeWithText("Giao dịch đã hoàn tất").assertExists()
+    }
+    @Test fun dashboardIncomeOpensMonthTransactions() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        AppDatabase.resetForTests()
+        app.deleteDatabase("chi_tieu_thanh_phat_db")
+        val vm = FinanceViewModel(app)
+        seed(vm)
+        shoot("dashboard_before_income", vm, MainDestination.DASHBOARD)
+        compose.onNodeWithTag("monthly_income_card").performClick()
+        compose.waitForIdle()
+        assertEquals(TransactionType.INCOME, vm.txFilter.value.type)
+        assertEquals(0, vm.txFilter.value.monthOffset)
+        assertEquals(true, vm.txFilter.value.settledOnly)
+        compose.onNodeWithText("Thu trong tháng").assertExists()
+        compose.onNodeWithText("Giao dịch đã hoàn tất").assertExists()
+    }
     @Test fun transactions() = run(MainDestination.TRANSACTIONS)
     @Test fun categoryChoiceIcon() {
         val app = ApplicationProvider.getApplicationContext<Application>()

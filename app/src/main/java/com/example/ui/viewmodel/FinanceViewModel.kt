@@ -148,8 +148,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // ---- Transactions tab filters, kept here so they survive switching tabs ----
-    data class TxFilter(val query: String = "", val type: TransactionType? = null, val monthOffset: Int? = 0, val accountId: Long? = null) {
-        val isDefault: Boolean get() = query.isBlank() && type == null && monthOffset == 0 && accountId == null
+    data class TxFilter(val query: String = "", val type: TransactionType? = null, val monthOffset: Int? = 0, val accountId: Long? = null, val settledOnly: Boolean = false) {
+        val isDefault: Boolean get() = query.isBlank() && type == null && monthOffset == 0 && accountId == null && !settledOnly
     }
     private val _txFilter = MutableStateFlow(TxFilter())
     val txFilter: StateFlow<TxFilter> = _txFilter.asStateFlow()
@@ -159,6 +159,23 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     val archivedAccounts: StateFlow<List<Account>> = repository.archivedAccounts.asState(emptyList())
     fun unarchiveAccount(id: Long) { viewModelScope.launch { repository.unarchiveAccount(id) } }
     fun transactionsForAccount(accountId: Long): Flow<List<Transaction>> = repository.transactionsForAccount(accountId)
+    fun installmentsForCard(cardId: Long) = repository.installmentsForCard(cardId)
+
+    fun addCardInstallment(item: com.example.data.model.CardInstallment) {
+        viewModelScope.launch { repository.addInstallment(item) }
+    }
+
+    fun deleteCardInstallment(item: com.example.data.model.CardInstallment) {
+        viewModelScope.launch { repository.deleteInstallment(item) }
+    }
+
+    fun updateCardInstallmentMonthlyAmount(id: Long, amount: Double, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch { onResult(repository.updateInstallmentMonthlyAmount(id, amount)) }
+    }
+
+    fun payCardInstallment(itemId: Long, fromAccountId: Long, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch { onResult(repository.payInstallment(itemId, fromAccountId)) }
+    }
 
     /** Pays [amount] of a credit card's debt from another account (a transfer, not spending). */
     fun payCreditCard(cardId: Long, fromAccountId: Long, amount: Double) {

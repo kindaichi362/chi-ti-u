@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.example.data.local.AccountDao
 import com.example.data.local.AppDatabase
 import com.example.data.local.BudgetDao
+import com.example.data.local.CardInstallmentDao
 import com.example.data.local.CategoryDao
 import com.example.data.local.DebtDao
 import com.example.data.local.GoalDao
@@ -13,6 +14,8 @@ import com.example.data.local.TransactionDao
 import com.example.data.model.Account
 import com.example.data.model.AccountType
 import com.example.data.model.Budget
+import com.example.data.model.CardInstallment
+import com.example.data.model.CategoryType
 import com.example.data.model.Category
 import com.example.data.model.Debt
 import com.example.data.model.DebtType
@@ -21,6 +24,8 @@ import com.example.data.model.PaymentStatus
 import com.example.data.model.RecurringBill
 import com.example.data.model.Transaction
 import com.example.data.model.TransactionType
+import com.example.data.model.nextAmount
+import com.example.data.model.nextInterest
 import kotlinx.coroutines.flow.Flow
 import java.util.Calendar
 
@@ -32,7 +37,8 @@ class FinanceRepository(
     private val budgetDao: BudgetDao = database.budgetDao(),
     private val debtDao: DebtDao = database.debtDao(),
     private val goalDao: GoalDao = database.goalDao(),
-    private val recurringBillDao: RecurringBillDao = database.recurringBillDao()
+    private val recurringBillDao: RecurringBillDao = database.recurringBillDao(),
+    private val cardInstallmentDao: CardInstallmentDao = database.cardInstallmentDao()
 ) {
     val allAccounts: Flow<List<Account>> = accountDao.getAllAccounts()
     val allCategories: Flow<List<Category>> = categoryDao.getAllCategories()
@@ -42,6 +48,60 @@ class FinanceRepository(
     val allGoals: Flow<List<Goal>> = goalDao.getAllGoals()
     val activeBills: Flow<List<RecurringBill>> = recurringBillDao.getActiveBills()
     val archivedAccounts: Flow<List<Account>> = accountDao.getArchivedAccounts()
+
+    fun installmentsForCard(cardId: Long): Flow<List<CardInstallment>> = cardInstallmentDao.forCard(cardId)
+
+    suspend fun addInstallment(item: CardInstallment): Long {
+        require(item.name.isNotBlank() && item.totalAmount.isFinite() && item.totalAmount in 1.0..1_000_000_000_000_000.0 && item.monthCount in 2..60)
+        require(item.monthlyAmount == null ||
+            (item.monthlyAmount.isFinite() && item.monthlyAmount >= kotlin.math.ceil(item.totalAmount / item.monthCount) && item.monthlyAmount <= 1_000_000_000_000_000.0))
+        require(accountDao.getAccountById(item.cardId)?.type == AccountType.CREDIT_CARD)
+        return cardInstallmentDao.insert(item)
+    }
+
+    suspend fun deleteInstallment(item: CardInstallment) = cardInstallmentDao.delete(item)
+
+    suspend fun updateInstallmentMonthlyAmount(id: Long, monthlyAmount: Double): Boolean = database.withTransaction {
+        val item = cardInstallmentDao.byId(id) ?: return@withTransaction false
+        if (item.paidMonths >= item.monthCount || !monthlyAmount.isFinite() || monthlyAmount < kotlin.math.ceil(item.totalAmount / item.monthCount) || monthlyAmount > 1_000_000_000_000_000.0) return@withTransaction false
+        cardInstallmentDao.update(item.copy(monthlyAmount = monthlyAmount))
+        true
+    }
+
+    /** A monthly instalment settles existing card debt; it must never be booked as another expense. */
+    suspend fun payInstallment(installmentId: Long, fromAccountId: Long): Boolean = database.withTransaction {
+        val item = cardInstallmentDao.byId(installmentId) ?: return@withTransaction false
+        val card = accountDao.getAccountById(item.cardId) ?: return@withTransaction false
+        val source = accountDao.getAccountById(fromAccountId) ?: return@withTransaction false
+        if (card.type != AccountType.CREDIT_CARD || source.id == card.id || source.type == AccountType.CREDIT_CARD || item.paidMonths >= item.monthCount) return@withTransaction false
+        val amount = item.nextAmount()
+        if (amount <= 0) return@withTransaction false
+        val interest = item.nextInterest()
+        if (interest > 0) {
+            val interestCategoryId = categoryDao.getAllCategoriesOnce()
+                .firstOrNull { it.name == "Lãi vay / lãi thẻ" && it.type == CategoryType.EXPENSE }?.id
+            val interestTx = Transaction(
+                type = TransactionType.EXPENSE,
+                amount = interest,
+                sourceAccountId = card.id,
+                categoryId = interestCategoryId,
+                note = "Lãi trả góp ${item.name} · kỳ ${item.paidMonths + 1}/${item.monthCount}"
+            )
+            applyBalanceEffect(interestTx, 1)
+            transactionDao.insertTransaction(interestTx)
+        }
+        val tx = Transaction(
+            type = TransactionType.TRANSFER,
+            amount = amount,
+            sourceAccountId = source.id,
+            destinationAccountId = card.id,
+            note = "Trả góp ${item.name} · kỳ ${item.paidMonths + 1}/${item.monthCount}"
+        )
+        applyBalanceEffect(tx, 1)
+        transactionDao.insertTransaction(tx)
+        cardInstallmentDao.update(item.copy(paidMonths = item.paidMonths + 1))
+        true
+    }
 
     fun transactionsForAccount(accountId: Long): Flow<List<Transaction>> = transactionDao.getTransactionsForAccount(accountId)
 
@@ -142,7 +202,7 @@ class FinanceRepository(
      * balances of transfer counterparts) would silently break. Returns false when it was kept.
      */
     suspend fun deleteAccountById(id: Long): Boolean = database.withTransaction {
-        if (transactionDao.countTransactionsForAccount(id) > 0 || recurringBillDao.countBillsForAccount(id) > 0) {
+        if (transactionDao.countTransactionsForAccount(id) > 0 || recurringBillDao.countBillsForAccount(id) > 0 || cardInstallmentDao.countForCard(id) > 0) {
             false
         } else {
             accountDao.deleteAccountById(id)

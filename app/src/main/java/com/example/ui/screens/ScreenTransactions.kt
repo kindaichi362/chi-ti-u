@@ -126,6 +126,7 @@ fun ScreenTransactions(
             val range = filter.monthOffset?.let(::monthRange)
             transactions.filter { tx ->
                 (range == null || tx.timestamp in range) &&
+                    (!filter.settledOnly || tx.countsInReports) &&
                     (filter.type == null || tx.type == filter.type) &&
                     (filter.accountId == null || tx.sourceAccountId == filter.accountId || tx.destinationAccountId == filter.accountId) &&
                     (filter.query.isBlank() || listOfNotNull(tx.note, categoryById[tx.categoryId]?.name, accountById[tx.sourceAccountId]?.name)
@@ -196,7 +197,14 @@ fun ScreenTransactions(
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Giao dịch", fontSize = TextSize.xl, fontWeight = FontWeight.Bold, color = p.textPrimary, modifier = Modifier.weight(1f))
+                Text(
+                    when {
+                        filter.settledOnly && filter.type == TransactionType.INCOME -> "Thu trong tháng"
+                        filter.settledOnly && filter.type == TransactionType.EXPENSE -> "Chi trong tháng"
+                        else -> "Giao dịch"
+                    },
+                    fontSize = TextSize.xl, fontWeight = FontWeight.Bold, color = p.textPrimary, modifier = Modifier.weight(1f)
+                )
                 Box {
                     IconButton(onClick = { showAccountFilter = true }) {
                         Icon(Icons.Outlined.FilterList, contentDescription = "Bộ lọc", tint = if (filter.accountId != null) p.accent else p.textPrimary)
@@ -252,6 +260,17 @@ fun ScreenTransactions(
             }
         }
 
+        if (filter.settledOnly) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Giao dịch đã hoàn tất", fontSize = TextSize.sm, color = p.textSecondary, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { viewModel.updateTxFilter { FinanceViewModel.TxFilter() } }) {
+                        Text("Bỏ lọc", color = p.accent)
+                    }
+                }
+            }
+        }
+
         // Month (or all time)
         item {
             Box {
@@ -291,15 +310,23 @@ fun ScreenTransactions(
                     Text(natural.summaryText, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = p.textPrimary)
                     Spacer(Modifier.height(Space.md))
                 }
-                Row {
-                    Column(Modifier.weight(1f)) {
-                        Label("Tổng thu")
-                        MoneyText(formatVnd(totalIn), fontSize = TextSize.lg, color = p.income)
-                    }
-                    Box(Modifier.width(1.dp).height(40.dp).background(p.border))
-                    Column(Modifier.weight(1f).padding(start = Space.lg)) {
-                        Label("Tổng chi")
-                        MoneyText(formatVnd(totalOut), fontSize = TextSize.lg, color = p.expense)
+                if (filter.settledOnly && filter.type in listOf(TransactionType.INCOME, TransactionType.EXPENSE)) {
+                    val income = filter.type == TransactionType.INCOME
+                    Label(if (income) "Tổng thu" else "Tổng chi")
+                    MoneyText(formatVnd(if (income) totalIn else totalOut), fontSize = TextSize.lg, color = if (income) p.income else p.expense)
+                    Spacer(Modifier.height(Space.xs))
+                    Text("${listed.size} giao dịch đã hoàn tất", fontSize = TextSize.xs, color = p.textSecondary)
+                } else {
+                    Row {
+                        Column(Modifier.weight(1f)) {
+                            Label("Tổng thu")
+                            MoneyText(formatVnd(totalIn), fontSize = TextSize.lg, color = p.income)
+                        }
+                        Box(Modifier.width(1.dp).height(40.dp).background(p.border))
+                        Column(Modifier.weight(1f).padding(start = Space.lg)) {
+                            Label("Tổng chi")
+                            MoneyText(formatVnd(totalOut), fontSize = TextSize.lg, color = p.expense)
+                        }
                     }
                 }
             }

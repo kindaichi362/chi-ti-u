@@ -9,6 +9,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.model.Account
 import com.example.data.model.Budget
+import com.example.data.model.CardInstallment
 import com.example.data.model.Category
 import com.example.data.model.Debt
 import com.example.data.model.Goal
@@ -23,9 +24,10 @@ import com.example.data.model.Transaction
         Budget::class,
         Debt::class,
         Goal::class,
-        RecurringBill::class
+        RecurringBill::class,
+        CardInstallment::class
     ],
-    version = 6,
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -37,6 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun debtDao(): DebtDao
     abstract fun goalDao(): GoalDao
     abstract fun recurringBillDao(): RecurringBillDao
+    abstract fun cardInstallmentDao(): CardInstallmentDao
 
     companion object {
         @Volatile
@@ -92,6 +95,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `card_installments` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `cardId` INTEGER NOT NULL, `name` TEXT NOT NULL, `totalAmount` REAL NOT NULL, `monthCount` INTEGER NOT NULL, `paidMonths` INTEGER NOT NULL, `firstDueDate` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_card_installments_cardId` ON `card_installments` (`cardId`)")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE card_installments ADD COLUMN monthlyAmount REAL DEFAULT NULL")
+            }
+        }
+
         /** Tests only: forget the open instance so the next call opens a fresh database file. */
         fun resetForTests() {
             synchronized(this) { INSTANCE?.close(); INSTANCE = null }
@@ -106,7 +122,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "chi_tieu_thanh_phat_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, CategoryCleanupMigration)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, CategoryCleanupMigration, MIGRATION_6_7, MIGRATION_7_8)
                 .build()
                 INSTANCE = instance
                 instance

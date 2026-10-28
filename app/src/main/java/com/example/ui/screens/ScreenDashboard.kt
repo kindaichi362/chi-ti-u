@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.AccountType
+import com.example.data.model.TransactionType
 import com.example.ui.components.AccountLogo
 import com.example.ui.components.AppCard
 import com.example.ui.components.EmptyState
@@ -72,6 +73,7 @@ const val HIDDEN_AMOUNT = "•••••• ₫"
 fun ScreenDashboard(
     viewModel: FinanceViewModel,
     onNavigateToTransactions: () -> Unit,
+    onOpenMonthlyFlow: (TransactionType, Int) -> Unit,
     onNavigateToAddTransaction: () -> Unit,
     onNavigateToAccounts: () -> Unit,
     onOpenAccount: (Long) -> Unit,
@@ -179,8 +181,18 @@ fun ScreenDashboard(
         // C. Income and expense this month
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                FlowCard("Thu ${if (monthOffset == 0) "tháng này" else "trong tháng"}", money(snapshot.monthlyIncome), up = true, modifier = Modifier.weight(1f))
-                FlowCard("Chi ${if (monthOffset == 0) "tháng này" else "trong tháng"}", money(snapshot.monthlyExpense), up = false, modifier = Modifier.weight(1f))
+                FlowCard(
+                    "Thu ${if (monthOffset == 0) "tháng này" else "trong tháng"}",
+                    money(snapshot.monthlyIncome), up = true,
+                    onClick = { onOpenMonthlyFlow(TransactionType.INCOME, monthOffset) },
+                    modifier = Modifier.weight(1f).testTag("monthly_income_card")
+                )
+                FlowCard(
+                    "Chi ${if (monthOffset == 0) "tháng này" else "trong tháng"}",
+                    money(snapshot.monthlyExpense), up = false,
+                    onClick = { onOpenMonthlyFlow(TransactionType.EXPENSE, monthOffset) },
+                    modifier = Modifier.weight(1f).testTag("monthly_expense_card")
+                )
             }
         }
 
@@ -269,9 +281,15 @@ fun ScreenDashboard(
 }
 
 @Composable
-private fun FlowCard(label: String, amount: String, up: Boolean, modifier: Modifier = Modifier) {
+private fun FlowCard(label: String, amount: String, up: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val p = AppPalette
-    AppCard(modifier = modifier, contentPadding = Space.md + Space.xs) {
+    AppCard(
+        modifier = modifier.heightIn(min = 100.dp),
+        onClick = onClick,
+        contentPadding = Space.md,
+        color = if (up) p.accentSoft else p.expenseSoft,
+        borderColor = if (up) p.accentSoft else p.expenseSoft
+    ) {
         // Icon and label on one line, the amount on its own full-width line so large sums fit at 360 dp.
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconTile(
@@ -282,7 +300,8 @@ private fun FlowCard(label: String, amount: String, up: Boolean, modifier: Modif
                 shape = CircleShape
             )
             Spacer(Modifier.width(Space.sm))
-            Text(label, fontSize = TextSize.xs, color = p.textSecondary, maxLines = 1)
+            Text(label, fontSize = TextSize.xs, color = p.textSecondary, maxLines = 1, modifier = Modifier.weight(1f))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Xem giao dịch", tint = p.textSecondary, modifier = Modifier.size(16.dp))
         }
         Spacer(Modifier.height(Space.sm))
         HeroMoney(amount, color = if (up) p.income else p.expense, base = TextSize.lg)

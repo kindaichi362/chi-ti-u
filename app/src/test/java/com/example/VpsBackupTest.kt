@@ -6,9 +6,11 @@ import com.example.data.backup.VpsBackup
 import com.example.data.local.AppDatabase
 import com.example.data.model.Account
 import com.example.data.model.AccountType
+import com.example.data.model.CardInstallment
 import com.example.data.model.Category
 import com.example.data.model.CategoryType
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -27,6 +29,8 @@ class VpsBackupTest {
         val accounts = db.accountDao()
         val categories = db.categoryDao()
         accounts.insertAccount(Account(name = "Tiền mặt", type = AccountType.CASH, balance = 125_000.0))
+        val cardId = accounts.insertAccount(Account(name = "Thẻ tín dụng", type = AccountType.CREDIT_CARD, balance = -600_000.0))
+        db.cardInstallmentDao().insert(CardInstallment(cardId = cardId, name = "Điện thoại", totalAmount = 600_000.0, monthCount = 3, firstDueDate = 1_790_000_000_000))
         categories.insertCategory(Category(name = "Ăn sáng", type = CategoryType.EXPENSE, iconName = "restaurant", colorHex = "#F97316"))
         val backup = VpsBackup(app)
         val snapshot = backup.createSnapshot()
@@ -36,6 +40,18 @@ class VpsBackupTest {
         backup.restoreSnapshot(snapshot)
         assertEquals(125_000.0, accounts.getAccountById(1)!!.balance, 0.0)
         assertEquals(1, categories.getCategoryCount())
+        assertEquals(1, db.cardInstallmentDao().forCard(cardId).first().size)
+
+        val previous = JSONObject(String(snapshot)).put("databaseVersion", 7)
+        previous.getJSONObject("tables").getJSONArray("card_installments").getJSONObject(0).remove("monthlyAmount")
+        backup.restoreSnapshot(previous.toString().toByteArray())
+        assertEquals(null, db.cardInstallmentDao().forCard(cardId).first().single().monthlyAmount)
+
+        val old = JSONObject(String(snapshot)).put("databaseVersion", 6)
+        old.getJSONObject("tables").remove("card_installments")
+        backup.restoreSnapshot(old.toString().toByteArray())
+        assertEquals(0, db.cardInstallmentDao().forCard(cardId).first().size)
+        assertEquals(125_000.0, accounts.getAccountById(1)!!.balance, 0.0)
 
         val broken = JSONObject(String(snapshot)).put("databaseVersion", 999).toString().toByteArray()
         try {

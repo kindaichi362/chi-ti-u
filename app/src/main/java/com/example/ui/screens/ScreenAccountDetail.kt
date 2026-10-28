@@ -218,6 +218,10 @@ fun ScreenAccountDetail(
             }
         }
 
+        if (isCard) item {
+            CardInstallmentSection(viewModel, account, accounts, hidden)
+        }
+
         item {
             AppCard(contentPadding = Space.lg) {
                 InfoRow("Loại", account.type.displayName)

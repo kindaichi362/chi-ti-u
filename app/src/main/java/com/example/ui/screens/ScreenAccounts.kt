@@ -72,6 +72,8 @@ import androidx.compose.ui.unit.dp
 import com.example.ai.CreditCardStatus
 import com.example.data.model.Account
 import com.example.data.model.AccountType
+import com.example.data.model.nextAmount
+import com.example.data.model.nextDueDate
 import com.example.payment.vietqr.VietnameseBankRegistry
 import com.example.ui.components.AccountLogo
 import com.example.ui.components.AppCard
@@ -262,7 +264,7 @@ fun ScreenAccounts(
                 if (isCard) {
                     Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
                         inSection.forEach { card ->
-                            CreditCardTile(card, cardStatus[card.id], hidden, onClick = { onOpenAccount(card.id) }, onPay = { paying = card })
+                            CreditCardTile(card, cardStatus[card.id], hidden, viewModel, onClick = { onOpenAccount(card.id) }, onPay = { paying = card })
                         }
                     }
                 } else {
@@ -305,8 +307,16 @@ fun ScreenAccounts(
 }
 
 @Composable
-internal fun CreditCardTile(card: Account, status: CreditCardStatus?, hidden: Boolean, onClick: () -> Unit, onPay: () -> Unit) {
+internal fun CreditCardTile(card: Account, status: CreditCardStatus?, hidden: Boolean, viewModel: FinanceViewModel, onClick: () -> Unit, onPay: () -> Unit) {
     val p = AppPalette
+    val installments by remember(card.id) { viewModel.installmentsForCard(card.id) }.collectAsState(initial = emptyList())
+    val endOfMonth = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.DAY_OF_MONTH, 1)
+        add(java.util.Calendar.MONTH, 1)
+        set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    val dueInstallments = installments.filter { (it.nextDueDate() ?: Long.MAX_VALUE) < endOfMonth }
     val debt = (-card.balance).coerceAtLeast(0.0)
     val util = if (card.creditLimit > 0) debt / card.creditLimit else 0.0
     AppCard(onClick = onClick) {
@@ -346,6 +356,10 @@ internal fun CreditCardTile(card: Account, status: CreditCardStatus?, hidden: Bo
         } else {
             Spacer(Modifier.height(Space.sm))
             Text("Chưa nhập hạn mức — mở thẻ để cài đặt", fontSize = TextSize.xs, color = p.accent)
+        }
+        if (dueInstallments.isNotEmpty()) {
+            Spacer(Modifier.height(Space.sm))
+            Text("Trả góp đến hạn: ${if (hidden) HIDDEN_AMOUNT else formatVnd(dueInstallments.sumOf { it.nextAmount() })} · ${dueInstallments.size} khoản", fontSize = TextSize.sm, color = p.textSecondary)
         }
         if (debt > 0) {
             Spacer(Modifier.height(Space.md))

@@ -216,6 +216,12 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
                 MainDestination.DASHBOARD -> ScreenDashboard(
                     viewModel = viewModel,
                     onNavigateToTransactions = { navigateTo(MainDestination.TRANSACTIONS) },
+                    onOpenMonthlyFlow = { type, offset ->
+                        viewModel.updateTxFilter {
+                            FinanceViewModel.TxFilter(type = type, monthOffset = offset, settledOnly = true)
+                        }
+                        navigateTo(MainDestination.TRANSACTIONS)
+                    },
                     onNavigateToAddTransaction = { openAdd() },
                     onNavigateToAccounts = { navigateTo(MainDestination.ACCOUNTS) },
                     onOpenAccount = { openAccountId = it; navigateTo(MainDestination.ACCOUNT_DETAIL) },

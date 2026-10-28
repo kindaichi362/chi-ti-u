@@ -11,7 +11,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** One-phone snapshots. The server keeps versions; a restore replaces all seven local tables. */
+/** One-phone snapshots. The server keeps versions; a restore replaces all local tables. */
 class VpsBackup(private val context: Context) {
     private val database = AppDatabase.getDatabase(context)
     private val prefs = context.getSharedPreferences("vps_backup", Context.MODE_PRIVATE)
@@ -56,12 +56,16 @@ class VpsBackup(private val context: Context) {
             val db = database.openHelper.writableDatabase
             for (table in TABLES.asReversed()) db.delete(table, null, null)
             val tables = snapshot.getJSONObject("tables")
-            for (table in TABLES) {
+            for (table in snapshotTables(snapshot)) {
                 val rows = tables.getJSONArray(table)
                 for (i in 0 until rows.length()) {
                     val row = rows.getJSONObject(i)
                     val values = ContentValues()
                     for (column in expectedColumns(db, table)) {
+                        if (table == "card_installments" && column == "monthlyAmount" && !row.has(column)) {
+                            values.putNull(column)
+                            continue
+                        }
                         when (val value = row.get(column)) {
                             JSONObject.NULL -> values.putNull(column)
                             is Int -> values.put(column, value)
@@ -101,18 +105,20 @@ class VpsBackup(private val context: Context) {
             tables.put(table, rows)
         }
         JSONObject().put("format", "chi-tieu-snapshot").put("version", 1)
-            .put("databaseVersion", 6).put("createdAt", System.currentTimeMillis())
+            .put("databaseVersion", 8).put("createdAt", System.currentTimeMillis())
             .put("tables", tables).toString().toByteArray(Charsets.UTF_8)
     }
 
     private fun validate(snapshot: JSONObject) {
         require(snapshot.optString("format") == "chi-tieu-snapshot" && snapshot.optInt("version") == 1) { "Sai định dạng bản sao lưu" }
-        require(snapshot.optInt("databaseVersion") == 6) { "Bản sao lưu không cùng phiên bản dữ liệu" }
+        val sourceTables = snapshotTables(snapshot)
         val tables = snapshot.getJSONObject("tables")
-        require(tables.keys().asSequence().toSet() == TABLES.toSet()) { "Thiếu bảng dữ liệu" }
+        require(tables.keys().asSequence().toSet() == sourceTables.toSet()) { "Thiếu bảng dữ liệu" }
         val db = database.openHelper.readableDatabase
-        for (table in TABLES) {
-            val columns = expectedColumns(db, table)
+        for (table in sourceTables) {
+            val columns = expectedColumns(db, table).let { current ->
+                if (snapshot.optInt("databaseVersion") == 7 && table == "card_installments") current - "monthlyAmount" else current
+            }
             val rows = tables.getJSONArray(table)
             for (i in 0 until rows.length()) {
                 val row = rows.getJSONObject(i)
@@ -123,6 +129,13 @@ class VpsBackup(private val context: Context) {
                 }
             }
         }
+    }
+
+    private fun snapshotTables(snapshot: JSONObject): List<String> = when (snapshot.optInt("databaseVersion")) {
+        6 -> TABLES_V6
+        7 -> TABLES
+        8 -> TABLES
+        else -> throw IllegalArgumentException("Bản sao lưu không cùng phiên bản dữ liệu")
     }
 
     private fun expectedColumns(db: androidx.sqlite.db.SupportSQLiteDatabase, table: String): Set<String> {
@@ -148,6 +161,7 @@ class VpsBackup(private val context: Context) {
     companion object {
         private const val ENDPOINT = "https://backup.180-93-125-5.sslip.io/v1/backup"
         private const val MAX_BYTES = 20 * 1024 * 1024
-        private val TABLES = listOf("accounts", "categories", "transactions", "budgets", "debts", "goals", "recurring_bills")
+        private val TABLES_V6 = listOf("accounts", "categories", "transactions", "budgets", "debts", "goals", "recurring_bills")
+        private val TABLES = TABLES_V6 + "card_installments"
     }
 }
