@@ -80,6 +80,7 @@ fun ScreenDashboard(
     onNavigateToBudgets: () -> Unit,
     onNavigateToAiAssistant: (String?) -> Unit,
     onNavigateToPlans: () -> Unit,
+    dragonCard: @Composable () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val p = AppPalette
@@ -195,6 +196,9 @@ fun ScreenDashboard(
                 )
             }
         }
+
+        // Dragon Home: the pet that grows with the recording habit
+        item { dragonCard() }
 
         // D. Net worth with a compact account list
         item {

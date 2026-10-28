@@ -32,6 +32,9 @@ class VpsBackupTest {
         val cardId = accounts.insertAccount(Account(name = "Thẻ tín dụng", type = AccountType.CREDIT_CARD, balance = -600_000.0))
         db.cardInstallmentDao().insert(CardInstallment(cardId = cardId, name = "Điện thoại", totalAmount = 600_000.0, monthCount = 3, firstDueDate = 1_790_000_000_000))
         categories.insertCategory(Category(name = "Ăn sáng", type = CategoryType.EXPENSE, iconName = "restaurant", colorHex = "#F97316"))
+        val dragon = com.example.dragon.data.DragonRepository(db)
+        dragon.ensurePet()
+        dragon.grant("first_tx:2026-10-28", "MISSION", "Ghi khoản đầu tiên", 20, 5)
         val backup = VpsBackup(app)
         val snapshot = backup.createSnapshot()
 
@@ -41,14 +44,25 @@ class VpsBackupTest {
         assertEquals(125_000.0, accounts.getAccountById(1)!!.balance, 0.0)
         assertEquals(1, categories.getCategoryCount())
         assertEquals(1, db.cardInstallmentDao().forCard(cardId).first().size)
+        assertEquals(20L, db.dragonDao().totalXpOnce())
+        assertEquals(5L, db.dragonDao().coinsOnce())
+
+        // An old (v8) backup restores the finance tables and leaves the dragon alone.
+        dragon.grant("care:2026-10-28:1", "CARE", "Vuốt ve", 1, 0)
+        val v8 = JSONObject(String(snapshot)).put("databaseVersion", 8)
+        v8.getJSONObject("tables").remove("dragon_pet"); v8.getJSONObject("tables").remove("dragon_ledger")
+        backup.restoreSnapshot(v8.toString().toByteArray())
+        assertEquals(21L, db.dragonDao().totalXpOnce())
 
         val previous = JSONObject(String(snapshot)).put("databaseVersion", 7)
         previous.getJSONObject("tables").getJSONArray("card_installments").getJSONObject(0).remove("monthlyAmount")
+        previous.getJSONObject("tables").remove("dragon_pet"); previous.getJSONObject("tables").remove("dragon_ledger")
         backup.restoreSnapshot(previous.toString().toByteArray())
         assertEquals(null, db.cardInstallmentDao().forCard(cardId).first().single().monthlyAmount)
 
         val old = JSONObject(String(snapshot)).put("databaseVersion", 6)
         old.getJSONObject("tables").remove("card_installments")
+        old.getJSONObject("tables").remove("dragon_pet"); old.getJSONObject("tables").remove("dragon_ledger")
         backup.restoreSnapshot(old.toString().toByteArray())
         assertEquals(0, db.cardInstallmentDao().forCard(cardId).first().size)
         assertEquals(125_000.0, accounts.getAccountById(1)!!.balance, 0.0)

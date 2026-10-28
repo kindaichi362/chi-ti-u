@@ -65,6 +65,11 @@ import androidx.compose.ui.unit.dp
 import com.example.data.model.TransactionType
 import com.example.data.update.AppUpdate
 import com.example.data.update.AvailableUpdate
+import com.example.dragon.ui.DragonCard
+import com.example.dragon.ui.DragonViewModel
+import com.example.dragon.ui.RewardToast
+import com.example.dragon.ui.ScreenDragonWorld
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.ScreenAIAssistant
 import com.example.ui.screens.ScreenAccountDetail
 import com.example.ui.screens.ScreenAccounts
@@ -92,7 +97,8 @@ enum class MainDestination(val label: String, val icon: ImageVector?, val tag: S
     PLANS("Kế hoạch", null, "tab_plans"),
     CATEGORIES("Danh mục", null, "tab_categories"),
     ACCOUNT_DETAIL("Tài khoản", null, "tab_account_detail"),
-    SETTINGS("Cài đặt", null, "tab_settings")
+    SETTINGS("Cài đặt", null, "tab_settings"),
+    DRAGON_WORLD("Rồng", null, "tab_dragon")
 }
 
 private val BOTTOM_TABS = setOf(
@@ -189,6 +195,13 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
 
     BackHandler(enabled = backStack.size > 1 || currentDestination != MainDestination.DASHBOARD) { navigateBack() }
 
+    // Dragon Home lives beside the finance screens: it only reads their data.
+    val dragonVm: DragonViewModel = viewModel()
+    val dragonState by dragonVm.state.collectAsState()
+    LaunchedEffect(currentDestination) {
+        if (currentDestination == MainDestination.REPORTS) dragonVm.reportViewed()
+    }
+
     val showBottomBar = currentDestination == MainDestination.DASHBOARD || currentDestination in BOTTOM_TABS
 
     Scaffold(
@@ -228,7 +241,12 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
                     onNavigateToBudgets = { reportsTab = 2; navigateTo(MainDestination.REPORTS) },
                     onNavigateToAiAssistant = { q -> pendingQuestion = q; navigateTo(MainDestination.AI_ASSISTANT) },
                     onNavigateToPlans = { navigateTo(MainDestination.PLANS) },
+                    dragonCard = { DragonCard(dragonState, onOpen = { navigateTo(MainDestination.DRAGON_WORLD) }) },
                     modifier = content
+                )
+                MainDestination.DRAGON_WORLD -> ScreenDragonWorld(
+                    vm = dragonVm,
+                    onBack = { navigateBack() }
                 )
                 MainDestination.TRANSACTIONS -> ScreenTransactions(
                     viewModel = viewModel,
@@ -292,6 +310,8 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
             }
         }
     }
+
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) { RewardToast(dragonVm) }
 
     if (showUpdateDialog) {
         AlertDialog(

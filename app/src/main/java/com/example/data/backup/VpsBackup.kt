@@ -54,7 +54,10 @@ class VpsBackup(private val context: Context) {
         context.openFileOutput("before_vps_restore.json", Context.MODE_PRIVATE).use { it.write(createSnapshot()) }
         database.withTransaction {
             val db = database.openHelper.writableDatabase
-            for (table in TABLES.asReversed()) db.delete(table, null, null)
+            // Older backups have no dragon tables: restoring one replaces the finance data only and
+            // leaves the dragon's progress alone.
+            val cleared = if (snapshotTables(snapshot).containsAll(DRAGON_TABLES)) TABLES else FINANCE_TABLES
+            for (table in cleared.asReversed()) db.delete(table, null, null)
             val tables = snapshot.getJSONObject("tables")
             for (table in snapshotTables(snapshot)) {
                 val rows = tables.getJSONArray(table)
@@ -105,7 +108,7 @@ class VpsBackup(private val context: Context) {
             tables.put(table, rows)
         }
         JSONObject().put("format", "chi-tieu-snapshot").put("version", 1)
-            .put("databaseVersion", 8).put("createdAt", System.currentTimeMillis())
+            .put("databaseVersion", 9).put("createdAt", System.currentTimeMillis())
             .put("tables", tables).toString().toByteArray(Charsets.UTF_8)
     }
 
@@ -133,8 +136,8 @@ class VpsBackup(private val context: Context) {
 
     private fun snapshotTables(snapshot: JSONObject): List<String> = when (snapshot.optInt("databaseVersion")) {
         6 -> TABLES_V6
-        7 -> TABLES
-        8 -> TABLES
+        7, 8 -> FINANCE_TABLES
+        9 -> TABLES
         else -> throw IllegalArgumentException("Bản sao lưu không cùng phiên bản dữ liệu")
     }
 
@@ -162,6 +165,8 @@ class VpsBackup(private val context: Context) {
         private const val ENDPOINT = "https://backup.180-93-125-5.sslip.io/v1/backup"
         private const val MAX_BYTES = 20 * 1024 * 1024
         private val TABLES_V6 = listOf("accounts", "categories", "transactions", "budgets", "debts", "goals", "recurring_bills")
-        private val TABLES = TABLES_V6 + "card_installments"
+        private val FINANCE_TABLES = TABLES_V6 + "card_installments"
+        private val DRAGON_TABLES = listOf("dragon_pet", "dragon_ledger")
+        private val TABLES = FINANCE_TABLES + DRAGON_TABLES
     }
 }

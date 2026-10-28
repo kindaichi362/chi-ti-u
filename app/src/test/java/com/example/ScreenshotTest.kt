@@ -212,6 +212,36 @@ class ScreenshotTest {
     @Test @Config(qualifiers = "w393dp-h2000dp-xxhdpi") fun dashboardDark() = run(MainDestination.DASHBOARD, "_dark", dark = true)
     @Test @Config(qualifiers = "w360dp-h780dp-xxhdpi") fun dashboardNarrow() = run(MainDestination.DASHBOARD, "_360")
     @Test fun settings() = run(MainDestination.SETTINGS)
+    @Test fun dragonWorld() = run(MainDestination.DRAGON_WORLD)
+    @Test @Config(qualifiers = "w393dp-h852dp-xxhdpi") fun dragonWorldDark() = run(MainDestination.DRAGON_WORLD, "_dark", dark = true)
+    @Test fun dragonMissionsAndClaim() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        AppDatabase.resetForTests()
+        app.deleteDatabase("chi_tieu_thanh_phat_db")
+        val vm = FinanceViewModel(app)
+        seed(vm)
+        shoot("dragon_world_care", vm, MainDestination.DRAGON_WORLD)
+        compose.onNodeWithTag("dragon_tab_missions").performClick()
+        repeat(20) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+            compose.waitForIdle()
+        }
+        val root = compose.activity.window.decorView
+        val bmp = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+        compose.runOnUiThread { root.draw(android.graphics.Canvas(bmp)) }
+        File(outDir, "dragon_missions.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        compose.onNodeWithTag("claim_close_day").performClick()
+        repeat(20) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+            compose.waitForIdle()
+        }
+        // Seeded data has transactions today: the first-record reward is automatic, "Chốt sổ" comes from the tap.
+        val keys = runBlocking { AppDatabase.getDatabase(app).dragonDao().keysWithPrefix("") }
+        assertEquals(true, keys.any { it.startsWith("first_tx:") })
+        assertEquals(true, keys.any { it.startsWith("close_day:") })
+    }
     @Test @Config(qualifiers = "w393dp-h1800dp-xxhdpi") fun cardDetail() = run(MainDestination.ACCOUNT_DETAIL, "_card", accountId = 5)
 
     /** The recording window shown while the mic is open. */

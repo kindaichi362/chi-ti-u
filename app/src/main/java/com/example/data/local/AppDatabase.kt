@@ -15,6 +15,9 @@ import com.example.data.model.Debt
 import com.example.data.model.Goal
 import com.example.data.model.RecurringBill
 import com.example.data.model.Transaction
+import com.example.dragon.data.DragonDao
+import com.example.dragon.data.DragonLedgerEntry
+import com.example.dragon.data.DragonPet
 
 @Database(
     entities = [
@@ -25,9 +28,11 @@ import com.example.data.model.Transaction
         Debt::class,
         Goal::class,
         RecurringBill::class,
-        CardInstallment::class
+        CardInstallment::class,
+        DragonPet::class,
+        DragonLedgerEntry::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -40,6 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun goalDao(): GoalDao
     abstract fun recurringBillDao(): RecurringBillDao
     abstract fun cardInstallmentDao(): CardInstallmentDao
+    abstract fun dragonDao(): DragonDao
 
     companion object {
         @Volatile
@@ -108,6 +114,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v9: Dragon Home. New tables only — no finance table is touched. */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `dragon_pet` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `energy` REAL NOT NULL, `happiness` REAL NOT NULL, `bond` REAL NOT NULL, `statsAt` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `dragon_ledger` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `title` TEXT NOT NULL, `xp` INTEGER NOT NULL, `coins` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_dragon_ledger_createdAt` ON `dragon_ledger` (`createdAt`)")
+            }
+        }
+
         /** Tests only: forget the open instance so the next call opens a fresh database file. */
         fun resetForTests() {
             synchronized(this) { INSTANCE?.close(); INSTANCE = null }
@@ -122,7 +137,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "chi_tieu_thanh_phat_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, CategoryCleanupMigration, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, CategoryCleanupMigration, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .build()
                 INSTANCE = instance
                 instance
