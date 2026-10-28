@@ -1,2 +1,0 @@
-{ "name": "dragon-gen", "private": true, "type": "module", "scripts": { "build": "node generate.mjs" },
-  "dependencies": { "@gltf-transform/core": "^4.1.0" } }

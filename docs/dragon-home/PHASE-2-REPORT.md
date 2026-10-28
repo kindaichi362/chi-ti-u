@@ -59,3 +59,13 @@
 2. Ghi một khoản chi. Thông báo "+20 XP · +5 xu" sẽ hiện ra.
 3. Ở Tổng quan, chạm thẻ Mộc Mộc → vào tab Nhiệm vụ → bấm **Nhận** ở "Chốt sổ hôm nay".
 4. Mở tab Báo cáo để nhận thưởng xem báo cáo tuần.
+
+## Cập nhật 1.7.1 — rồng theo đúng ảnh mẫu (2D)
+- Bỏ mô hình 3D dựng bằng code (không giống mẫu) và thư viện Filament; APK còn ~22 MB.
+- Hình rồng lấy từ chính ảnh của bạn, cắt và tách nền bằng `tools/dragon-art` (`npm run build`):
+  - Giai đoạn 1–3: ảnh nét 1254 px bạn gửi (nhìn thẳng). Khi đứng yên thỉnh thoảng quay sang trái/phải bằng ảnh các góc.
+  - Giai đoạn 4–6 và thư viện giai đoạn: cắt từ tờ thiết kế (`character-sheet.webp`).
+  - Tư thế ăn, chơi, ngủ, vui, đi, chạy (tờ thiết kế) — dùng cho giai đoạn 1–3; giai đoạn lớn dùng ảnh của mình + chuyển động + đồ vật.
+  - 8 biểu cảm khuôn mặt hiện trong ô thoại theo tâm trạng.
+- Chuyển động bằng Compose: thở, nhảy, lắc khi vuốt ve, 💤 khi ngủ, ✨ khi lên cấp. Cấp giai đoạn theo tờ mẫu: 1–5, 6–10, 11–20, 21–30, 31–40, 41–50.
+- Giới hạn: ảnh cắt từ tờ thiết kế gốc nhỏ (84–240 px) nên giai đoạn 4–6 và các tư thế kém nét hơn ảnh 1254 px. Có ảnh riêng độ phân giải cao cho từng giai đoạn/tư thế thì chạy lại `tools/dragon-art` là thay được.

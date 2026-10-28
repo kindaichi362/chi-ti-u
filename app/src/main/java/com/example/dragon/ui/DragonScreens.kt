@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -69,7 +70,9 @@ import com.example.dragon.data.Grant
 import com.example.dragon.domain.CareRules
 import com.example.dragon.domain.LevelCurve
 import com.example.dragon.domain.MissionEngine
+import com.example.dragon.render.DragonFace
 import com.example.dragon.render.DragonView
+import com.example.dragon.render.dragonStageArt
 import com.example.dragon.render.dragonThumb
 import com.example.ui.components.AppCard
 import com.example.ui.components.SegmentedTabs
@@ -233,9 +236,10 @@ fun ScreenDragonWorld(vm: DragonViewModel, onBack: () -> Unit, modifier: Modifie
             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp).size(width = 170.dp, height = 26.dp).clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.10f)))
             DragonView(
                 stage = state.stage.number, clip = clip, onTap = vm::touch,
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.92f).padding(bottom = 8.dp)
+                // Older stages stand taller in the room, so growth is visible.
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.56f + 0.045f * state.stage.number).padding(bottom = 22.dp)
             )
-            SpeechBubble(state.mood, Modifier.align(Alignment.TopStart).padding(Space.md))
+            SpeechBubble(state.mood, moodFace(state), Modifier.align(Alignment.TopStart).padding(Space.md))
         }
 
         // Panel
@@ -280,12 +284,25 @@ private fun roomBrush(dark: Boolean) = if (dark) Brush.verticalGradient(listOf(C
 else Brush.verticalGradient(listOf(Color(0xFFDDF0F6), Color(0xFFF3F8EC)))
 
 @Composable
-private fun SpeechBubble(text: String, modifier: Modifier = Modifier) {
+private fun SpeechBubble(text: String, face: DragonFace, modifier: Modifier = Modifier) {
     val p = AppPalette
-    Text(
-        text, fontSize = TextSize.xs, color = p.textPrimary, lineHeight = 16.sp,
-        modifier = modifier.width(200.dp).clip(RoundedCornerShape(14.dp, 14.dp, 14.dp, 4.dp)).background(p.card.copy(alpha = 0.92f)).padding(horizontal = 10.dp, vertical = 8.dp)
-    )
+    Row(
+        modifier.widthIn(max = 260.dp).clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp)).background(p.card.copy(alpha = 0.94f)).padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(painterResource(face.res), contentDescription = null, modifier = Modifier.size(40.dp).clip(CircleShape))
+        Spacer(Modifier.width(8.dp))
+        Text(text, fontSize = TextSize.xs, color = p.textPrimary, lineHeight = 16.sp, modifier = Modifier.padding(end = 6.dp))
+    }
+}
+
+/** Face from the character sheet that matches what the dragon is saying. */
+fun moodFace(state: DragonState): DragonFace = when {
+    state.pet.energy < 30 -> DragonFace.SAD
+    !state.recordedToday -> DragonFace.CUTE
+    state.streak >= 7 -> DragonFace.LAUGH
+    state.pet.happiness < 40 -> DragonFace.SAD
+    else -> DragonFace.HAPPY
 }
 
 @Composable
@@ -459,7 +476,7 @@ private fun DragonProfileDialog(state: DragonState, onRename: (String) -> Unit, 
                                     val unlocked = level >= s.levels.first
                                     Column(Modifier.width(cell).clip(Radius.md).background(p.surface2).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                         Image(
-                                            painterResource(dragonThumb(s.number)), contentDescription = s.title,
+                                            painterResource(dragonStageArt(s.number)), contentDescription = s.title,
                                             modifier = Modifier.fillMaxWidth().aspectRatio(1f).alpha(if (unlocked) 1f else 0.35f),
                                             colorFilter = if (unlocked) null else ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
                                         )

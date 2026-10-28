@@ -31,11 +31,11 @@ object LevelCurve {
 
     enum class Stage(val number: Int, val title: String, val levels: IntRange, val blurb: String) {
         NEWBORN(1, "Sơ sinh", 1..5, "Vừa nở khỏi trứng, hay ngủ và thích được vuốt ve."),
-        TODDLER(2, "Tập đi", 6..12, "Bắt đầu chập chững, cánh nhỏ đã vẫy được."),
-        YOUTH(3, "Thiếu niên", 13..20, "Mọc gai lưng, sừng dài hơn, rất ham chơi."),
+        TODDLER(2, "Tập đi", 6..10, "Chập chững tập đi, đeo yếm vàng, cánh nhỏ đã vẫy được."),
+        YOUTH(3, "Thiếu niên", 11..20, "Sừng dài hơn, thêm gai lưng, rất ham chơi."),
         ADULT(4, "Trưởng thành", 21..30, "Cánh to khoẻ, đuôi dài, chững chạc hơn."),
-        ELITE(5, "Tinh anh", 31..40, "Sừng ánh vàng — dấu hiệu của chủ nhân kỷ luật."),
-        LEGEND(6, "Huyền thoại", 41..50, "Có vầng hào quang. Bạn đã giữ thói quen rất lâu.");
+        ELITE(5, "Tinh anh", 31..40, "Gai ánh vàng và viên ngọc trước ngực — dấu hiệu của chủ nhân kỷ luật."),
+        LEGEND(6, "Huyền thoại", 41..50, "Sừng vàng, vương miện ngọc, cánh phát sáng. Bạn đã giữ thói quen rất lâu.");
     }
 
     fun stageOf(level: Int): Stage = Stage.entries.first { level <= it.levels.last }

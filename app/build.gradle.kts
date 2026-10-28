@@ -16,11 +16,11 @@ android {
     applicationId = "com.aistudio.chitieuthanhphat.qzkjmv"
     minSdk = 24
     targetSdk = 36
-    versionCode = 14
-    versionName = "1.7.0"
+    versionCode = 15
+    versionName = "1.7.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    // Phones only: drops the x86 copies of the 3D engine (~13 MB).
+    // Phones only: no x86 native libraries in the APK.
     ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
   }
 
@@ -97,9 +97,6 @@ dependencies {
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)
   implementation(libs.zxing.core)
-  // Dragon Home: 3D dragon (glTF) rendered with Filament, only on the Dragon World screen.
-  implementation(libs.filament.android)
-  implementation(libs.filament.gltfio)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)

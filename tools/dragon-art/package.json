@@ -1,0 +1,1 @@
+{"type":"module","private":true,"scripts":{"build":"node cut.mjs"},"dependencies":{"sharp":"^0.34.0"}}
