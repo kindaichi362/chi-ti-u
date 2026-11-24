@@ -288,7 +288,8 @@ fun ScreenAccounts(
         item {
             AppCard(contentPadding = Space.lg) {
                 ListRow(
-                    title = "Sổ nợ, mục tiêu & hóa đơn",
+                    title = "Vay nợ",
+                    subtitle = "Theo dõi tiền vay, tiền cho vay và trả nợ",
                     leading = { IconTile(Icons.AutoMirrored.Outlined.EventNote, tint = p.accent, background = p.accentSoft) },
                     showChevron = true,
                     onClick = onOpenPlans

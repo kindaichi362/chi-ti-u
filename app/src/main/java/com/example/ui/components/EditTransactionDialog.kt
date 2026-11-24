@@ -60,6 +60,7 @@ fun EditTransactionDialog(
     var timestamp by remember { mutableLongStateOf(transaction.timestamp) }
     var showDatePicker by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var categoryQuery by remember { mutableStateOf("") }
 
     val categoryType = when (transaction.type) {
         TransactionType.INCOME -> CategoryType.INCOME
@@ -115,13 +116,22 @@ fun EditTransactionDialog(
                 )
                 if (pickableCategories.isNotEmpty()) {
                     Text("Danh mục", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = categoryQuery,
+                        onValueChange = { categoryQuery = it },
+                        label = { Text("Tìm danh mục") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    val matchingCategories = pickableCategories.filter { it.matchesSearch(categoryQuery) }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(pickableCategories, key = { it.id }) { cat ->
+                        items(matchingCategories, key = { it.id }) { cat ->
                             CategoryChoiceChip(category = cat, selected = categoryId == cat.id) {
                                 categoryId = cat.id
                             }
                         }
                     }
+                    if (matchingCategories.isEmpty()) Text("Không tìm thấy danh mục", fontSize = 12.sp)
                 }
                 Text(
                     text = if (transaction.type == TransactionType.INCOME) "Vào tài khoản" else "Từ tài khoản",

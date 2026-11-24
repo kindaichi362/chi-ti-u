@@ -43,6 +43,7 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -83,6 +84,7 @@ import com.example.ui.components.PrimaryButton
 import com.example.ui.components.SegmentedTabs
 import com.example.ui.components.InlineVoiceInput
 import com.example.ui.components.formatVnd
+import com.example.ui.components.matchesSearch
 import com.example.ui.screens.paytrack.PayTrackBottomSheet
 import com.example.ui.theme.AppPalette
 import com.example.ui.theme.MoneyStyle
@@ -372,23 +374,35 @@ fun ScreenAddTransaction(
     }
 
     if (showAllCategories) {
+        var categoryQuery by remember(catType) { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showAllCategories = false },
             containerColor = p.card,
             title = { Text("Chọn danh mục", fontWeight = FontWeight.Bold, color = p.textPrimary) },
             text = {
-                val groups = categories.filter { it.type == catType }
+                val groups = categories.filter { it.type == catType && it.matchesSearch(categoryQuery) }
                     .groupBy { it.groupName ?: "Khác" }
                     .toList()
                     .sortedBy { (g, _) -> InitialCategories.groupOrder.indexOf(g).let { if (it < 0) 99 else it } }
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Space.md)) {
-                    groups.forEach { (g, cats) ->
-                        Text(g, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = p.textSecondary)
-                        FlowRow(maxItemsInEachRow = 3, horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                            cats.forEach { cat ->
-                                CategoryCell(cat, selected = cat.id == categoryId, modifier = Modifier.weight(1f)) { categoryId = cat.id; showAllCategories = false }
+                Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                    OutlinedTextField(
+                        value = categoryQuery,
+                        onValueChange = { categoryQuery = it },
+                        label = { Text("Tìm danh mục") },
+                        placeholder = { Text("Ví dụ: cà phê, điện, xăng") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("category_search")
+                    )
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Space.md)) {
+                        if (groups.isEmpty()) Text("Không tìm thấy danh mục", color = p.textSecondary)
+                        groups.forEach { (g, cats) ->
+                            Text(g, fontSize = TextSize.sm, fontWeight = FontWeight.SemiBold, color = p.textSecondary)
+                            FlowRow(maxItemsInEachRow = 3, horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                                cats.forEach { cat ->
+                                    CategoryCell(cat, selected = cat.id == categoryId, modifier = Modifier.weight(1f)) { categoryId = cat.id; showAllCategories = false }
+                                }
+                                repeat((3 - cats.size % 3) % 3) { Spacer(Modifier.weight(1f)) }
                             }
-                            repeat((3 - cats.size % 3) % 3) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 }

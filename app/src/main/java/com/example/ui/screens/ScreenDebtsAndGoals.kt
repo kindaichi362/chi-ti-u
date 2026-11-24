@@ -73,6 +73,7 @@ import com.example.data.model.Goal
 import com.example.data.model.RecurringBill
 import com.example.ui.components.formatVnd
 import com.example.ui.components.CategoryChoiceChip
+import com.example.ui.components.matchesSearch
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
 import com.example.ui.theme.TransferBlue
@@ -244,6 +245,7 @@ fun ScreenDebtsAndGoals(
         var billAmount by remember { mutableStateOf("") }
         var billDay by remember { mutableStateOf("") }
         var billCategoryId by remember { mutableStateOf<Long?>(null) }
+        var billCategoryQuery by remember { mutableStateOf("") }
         var billAccountId by remember { mutableStateOf(accounts.firstOrNull()?.id) }
         // Utility-type categories first, so the usual picks (điện, nước, internet...) are in view.
         val billCategories = remember(categories) {
@@ -278,8 +280,15 @@ fun ScreenDebtsAndGoals(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text("Danh mục", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = billCategoryQuery,
+                        onValueChange = { billCategoryQuery = it },
+                        label = { Text("Tìm danh mục") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(billCategories, key = { it.id }) { cat ->
+                        items(billCategories.filter { it.matchesSearch(billCategoryQuery) }, key = { it.id }) { cat ->
                             CategoryChoiceChip(category = cat, selected = billCategoryId == cat.id) {
                                 billCategoryId = cat.id
                             }
@@ -510,7 +519,7 @@ fun ScreenDebtsAndGoals(
                     }
                 }
                 Text(
-                    text = "Kế hoạch & Sổ Nợ",
+                    text = "Vay nợ & kế hoạch",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -551,7 +560,7 @@ fun ScreenDebtsAndGoals(
             Tab(
                 selected = selectedTabIndex == 0,
                 onClick = { selectedTabIndex = 0 },
-                text = { Text("Sổ Nợ (${debts.count { !it.isSettled }})", fontWeight = FontWeight.SemiBold, fontSize = 12.sp) }
+                text = { Text("Vay nợ (${debts.count { !it.isSettled }})", fontWeight = FontWeight.SemiBold, fontSize = 12.sp) }
             )
             Tab(
                 selected = selectedTabIndex == 1,

@@ -18,7 +18,10 @@ class VpsBackup(private val context: Context) {
 
     var token: String
         get() = prefs.getString("token", "") ?: ""
-        set(value) { prefs.edit().putString("token", value.trim()).apply() }
+        set(value) {
+            prefs.edit().putString("token", value.trim()).apply()
+            NightlyBackupScheduler.schedule(context)
+        }
 
     suspend fun upload(): String = withContext(Dispatchers.IO) {
         val bytes = createSnapshot()

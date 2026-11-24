@@ -19,3 +19,4 @@ debug.keystore
 *.apk
 /secrets/
 /.codex-remote-attachments/
+app/src/main/assets/vps_provision.txt

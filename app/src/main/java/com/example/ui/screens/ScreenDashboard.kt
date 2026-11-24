@@ -273,7 +273,7 @@ fun ScreenDashboard(
         item {
             AppCard(onClick = onNavigateToPlans, contentPadding = Space.md, color = p.accentSoft, borderColor = p.accentSoft) {
                 ListRow(
-                    title = "Sổ nợ, mục tiêu & hóa đơn",
+                    title = "Vay nợ, mục tiêu & hóa đơn",
                     subtitle = "${debts.count { !it.isSettled }} khoản nợ đang mở · ${bills.size} hóa đơn định kỳ",
                     leading = { IconTile(Icons.AutoMirrored.Outlined.EventNote, tint = p.accent, background = p.card) },
                     showChevron = true,

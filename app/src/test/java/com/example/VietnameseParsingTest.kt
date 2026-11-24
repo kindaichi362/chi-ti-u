@@ -37,6 +37,11 @@ class VietnameseParsingTest {
     @Test
     fun amounts() {
         assertEquals(50_000.0, amountOf("ăn sáng 50k")!!, 0.1)
+        assertEquals(180_000.0, amountOf("ăn sáng 180k")!!, 0.1)
+        assertEquals(184_000.0, amountOf("mua đồ 184k")!!, 0.1)
+        assertEquals(70_000.0, amountOf("cà phê 7 chục")!!, 0.1)
+        assertEquals(70_000.0, amountOf("cà phê bảy chục")!!, 0.1)
+        assertEquals(184_000.0, amountOf("một trăm tám mươi tư k")!!, 0.1)
         assertEquals(50_000.0, amountOf("50 nghìn")!!, 0.1)
         assertEquals(2_500_000.0, amountOf("2tr5")!!, 0.1)
         assertEquals(1_200_000.0, amountOf("1 triệu 2")!!, 0.1)

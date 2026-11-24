@@ -63,6 +63,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.TransactionType
+import com.example.data.backup.NightlyBackupScheduler
+import com.example.data.backup.VpsProvision
 import com.example.data.update.AppUpdate
 import com.example.data.update.AvailableUpdate
 import com.example.dragon.ui.DragonCard
@@ -111,8 +113,16 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: FinanceViewModel by viewModels()
 
+    // Rời app (về màn hình chính / chuyển app) → đẩy bản sao lưu lên VPS sau ~1 phút để số liệu trên VPS luôn mới.
+    override fun onStop() {
+        super.onStop()
+        VpsProvision.backupSoon(applicationContext)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        VpsProvision.loadIfMissing(this)
+        NightlyBackupScheduler.schedule(this)
         enableEdgeToEdge()
 
         setContent {

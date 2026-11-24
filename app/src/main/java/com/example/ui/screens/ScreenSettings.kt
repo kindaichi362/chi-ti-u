@@ -176,7 +176,7 @@ fun ScreenSettings(
                 )
                 RowDivider()
                 ListRow(
-                    title = "Sổ nợ, mục tiêu & hóa đơn",
+                    title = "Vay nợ, mục tiêu & hóa đơn",
                     leading = { IconTile(Icons.AutoMirrored.Outlined.EventNote, tint = p.accent, background = p.accentSoft) },
                     showChevron = true,
                     onClick = onOpenPlans

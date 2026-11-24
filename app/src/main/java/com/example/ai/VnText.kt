@@ -119,6 +119,26 @@ object VnText {
     private val groupedRegex = Regex("(?<![\\d.,])(\\d{1,3}(?:[.,]\\d{3})+)(?![\\d.,])")
     private val plainRegex = Regex("(?<![\\d.,])(\\d{4,12})(?![\\d.,])")
     private val shortRegex = Regex("(?<![\\d.,])(\\d{1,3})$END")
+    private val tensRegex = Regex("(?<![\\p{L}\\d])(\\d{1,2})\\s*(?:chục|chuc)$END")
+    private val spokenAmountRegex = Regex(
+        "(?<![\\p{L}\\d])((?:(?:mot|hai|ba|bon|tu|nam|lam|sau|bay|tam|chin|muoi|chuc|tram|linh|le)\\s+){1,6})(?:k|nghin|ngan|trieu|tr|cu|chuc)(?![\\p{L}\\d])"
+    )
+
+    private fun spokenNumber(words: List<String>): Int? {
+        val digits = mapOf("mot" to 1, "hai" to 2, "ba" to 3, "bon" to 4, "tu" to 4,
+            "nam" to 5, "lam" to 5, "sau" to 6, "bay" to 7, "tam" to 8, "chin" to 9)
+        var total = 0
+        var pending = 0
+        for (word in words) {
+            when (word) {
+                "tram" -> { total += pending.coerceAtLeast(1) * 100; pending = 0 }
+                "muoi", "chuc" -> { total += pending.coerceAtLeast(1) * 10; pending = 0 }
+                "linh", "le" -> Unit
+                else -> pending = digits[word] ?: return null
+            }
+        }
+        return (total + pending).takeIf { it > 0 }
+    }
 
     /**
      * Reads a VND amount from casual Vietnamese: "50k", "50 nghìn", "2tr5" (2.5M), "1 triệu 2"
@@ -127,6 +147,19 @@ object VnText {
      */
     fun extractAmount(text: String): Double? {
         val lower = text.lowercase(Locale.ROOT)
+
+        tensRegex.find(lower)?.let { return it.groupValues[1].toDouble() * 10_000 }
+        val plainWords = unaccent(lower)
+        spokenAmountRegex.find(plainWords)?.let { match ->
+            val words = match.groupValues[1].trim().split(Regex("\\s+"))
+            val value = spokenNumber(words)
+            val unit = match.value.trim().substringAfterLast(' ')
+            if (value != null) return value * when (unit) {
+                "trieu", "tr", "cu" -> 1_000_000.0
+                "chuc" -> 10_000.0
+                else -> 1_000.0
+            }
+        }
 
         millionRegex.find(lower)?.let { m ->
             val base = m.groupValues[1].replace(',', '.').toDoubleOrNull() ?: return@let
