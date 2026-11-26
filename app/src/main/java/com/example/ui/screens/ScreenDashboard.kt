@@ -23,11 +23,13 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Handshake
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -40,6 +42,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.AccountType
+import com.example.data.model.Debt
+import com.example.data.model.DebtType
 import com.example.data.model.TransactionType
 import com.example.ui.components.AccountLogo
 import com.example.ui.components.AppCard
@@ -80,6 +84,8 @@ fun ScreenDashboard(
     onNavigateToBudgets: () -> Unit,
     onNavigateToAiAssistant: (String?) -> Unit,
     onNavigateToPlans: () -> Unit,
+    /** Opens the "Vay nợ" tab; a type also opens its add dialog (borrow / lend). */
+    onNavigateToDebts: (DebtType?) -> Unit = {},
     dragonCard: @Composable () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -269,17 +275,58 @@ fun ScreenDashboard(
             }
         }
 
-        // F. Shortcut to debts, goals and bills
+        // E2. Loans: what I still owe and what others still owe me, with one-tap borrow / lend
+        item { DebtSummaryCard(debts, { money(it) }, onNavigateToDebts) }
+
+        // F. Shortcut to goals and bills
         item {
             AppCard(onClick = onNavigateToPlans, contentPadding = Space.md, color = p.accentSoft, borderColor = p.accentSoft) {
                 ListRow(
-                    title = "Vay nợ, mục tiêu & hóa đơn",
-                    subtitle = "${debts.count { !it.isSettled }} khoản nợ đang mở · ${bills.size} hóa đơn định kỳ",
+                    title = "Mục tiêu & hóa đơn",
+                    subtitle = "${bills.size} hóa đơn định kỳ",
                     leading = { IconTile(Icons.AutoMirrored.Outlined.EventNote, tint = p.accent, background = p.card) },
                     showChevron = true,
                     modifier = Modifier.testTag("card_plans")
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DebtSummaryCard(debts: List<Debt>, money: (Double) -> String, onOpen: (DebtType?) -> Unit) {
+    val p = AppPalette
+    val open = debts.filter { !it.isSettled }
+    val iOwe = open.filter { it.type == DebtType.I_OWE }.sumOf { it.remainingAmount }
+    val owedToMe = open.filter { it.type == DebtType.OWED_TO_ME }.sumOf { it.remainingAmount }
+    AppCard(onClick = { onOpen(null) }, contentPadding = Space.md, modifier = Modifier.testTag("card_debts")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconTile(Icons.Outlined.Handshake, tint = p.accent, background = p.accentSoft)
+            Spacer(Modifier.width(Space.md))
+            Column(Modifier.weight(1f)) {
+                Text("Vay nợ", fontSize = TextSize.base, fontWeight = FontWeight.SemiBold, color = p.textPrimary)
+                Text(if (open.isEmpty()) "Chưa có khoản nào đang mở" else "${open.size} khoản đang mở",
+                    fontSize = TextSize.xs, color = p.textSecondary)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = p.textSecondary)
+        }
+        if (open.isNotEmpty()) {
+            Spacer(Modifier.height(Space.sm))
+            Row {
+                Column(Modifier.weight(1f)) {
+                    Text("Người khác nợ tôi", fontSize = TextSize.xs, color = p.textSecondary)
+                    MoneyText(money(owedToMe), color = p.income)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("Tôi đang nợ", fontSize = TextSize.xs, color = p.textSecondary)
+                    MoneyText(money(iOwe), color = p.expense)
+                }
+            }
+        }
+        Spacer(Modifier.height(Space.sm))
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            OutlinedButton(onClick = { onOpen(DebtType.OWED_TO_ME) }, modifier = Modifier.weight(1f).testTag("btn_lend")) { Text("Cho vay") }
+            OutlinedButton(onClick = { onOpen(DebtType.I_OWE) }, modifier = Modifier.weight(1f).testTag("btn_borrow")) { Text("Vay tiền") }
         }
     }
 }

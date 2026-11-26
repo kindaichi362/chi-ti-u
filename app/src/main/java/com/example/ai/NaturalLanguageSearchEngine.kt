@@ -71,6 +71,7 @@ object NaturalLanguageSearchEngine {
 
         // 4. Filter Transactions strictly
         val matchedList = allTransactions.filter { tx ->
+            if (tx.debtId != null) return@filter false // loan principal is not spending or income
             // Date filter
             val inDateRange = tx.date in startDate..endDate
 

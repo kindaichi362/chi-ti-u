@@ -72,6 +72,10 @@ class VpsBackup(private val context: Context) {
                             values.putNull(column)
                             continue
                         }
+                        if ((table == "transactions" && column == "debtId" || table == "debts" && column == "accountId") && !row.has(column)) {
+                            values.putNull(column)
+                            continue
+                        }
                         when (val value = row.get(column)) {
                             JSONObject.NULL -> values.putNull(column)
                             is Int -> values.put(column, value)
@@ -111,7 +115,7 @@ class VpsBackup(private val context: Context) {
             tables.put(table, rows)
         }
         JSONObject().put("format", "chi-tieu-snapshot").put("version", 1)
-            .put("databaseVersion", 9).put("createdAt", System.currentTimeMillis())
+            .put("databaseVersion", 10).put("createdAt", System.currentTimeMillis())
             .put("tables", tables).toString().toByteArray(Charsets.UTF_8)
     }
 
@@ -123,7 +127,12 @@ class VpsBackup(private val context: Context) {
         val db = database.openHelper.readableDatabase
         for (table in sourceTables) {
             val columns = expectedColumns(db, table).let { current ->
-                if (snapshot.optInt("databaseVersion") == 7 && table == "card_installments") current - "monthlyAmount" else current
+                when {
+                    snapshot.optInt("databaseVersion") < 10 && table == "transactions" -> current - "debtId"
+                    snapshot.optInt("databaseVersion") < 10 && table == "debts" -> current - "accountId"
+                    snapshot.optInt("databaseVersion") == 7 && table == "card_installments" -> current - "monthlyAmount"
+                    else -> current
+                }
             }
             val rows = tables.getJSONArray(table)
             for (i in 0 until rows.length()) {
@@ -140,7 +149,7 @@ class VpsBackup(private val context: Context) {
     private fun snapshotTables(snapshot: JSONObject): List<String> = when (snapshot.optInt("databaseVersion")) {
         6 -> TABLES_V6
         7, 8 -> FINANCE_TABLES
-        9 -> TABLES
+        9, 10 -> TABLES
         else -> throw IllegalArgumentException("Bản sao lưu không cùng phiên bản dữ liệu")
     }
 

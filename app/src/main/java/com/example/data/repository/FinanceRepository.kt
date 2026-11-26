@@ -154,6 +154,7 @@ class FinanceRepository(
 
     /** Returns the new row id, or -1 when the transaction is invalid and nothing was saved. */
     suspend fun addTransaction(transaction: Transaction): Long = database.withTransaction {
+        if (transaction.debtId != null) return@withTransaction -1L
         val selfTransfer = transaction.type == TransactionType.TRANSFER &&
             transaction.destinationAccountId == transaction.sourceAccountId
         if (transaction.amount <= 0.0 || selfTransfer) return@withTransaction -1L
@@ -164,6 +165,7 @@ class FinanceRepository(
     /** Replaces an existing transaction: reverts the old balance effect, then applies the new one. */
     suspend fun updateTransaction(updated: Transaction) = database.withTransaction {
         val old = transactionDao.getTransactionById(updated.id) ?: return@withTransaction
+        if (old.debtId != null || updated.debtId != null) return@withTransaction
         applyBalanceEffect(old, -1)
         applyBalanceEffect(updated, 1)
         transactionDao.updateTransaction(updated)
@@ -171,6 +173,8 @@ class FinanceRepository(
 
     suspend fun confirmTransactionPayment(transactionId: Long) = database.withTransaction {
         val tx = transactionDao.getTransactionById(transactionId) ?: return@withTransaction
+        // Loan money is always booked as paid; the debt screen owns it.
+        if (tx.debtId != null) return@withTransaction
         if (tx.paymentStatus != PaymentStatus.PAID) {
             val paid = tx.copy(paymentStatus = PaymentStatus.PAID)
             applyBalanceEffect(paid, 1)
@@ -180,7 +184,7 @@ class FinanceRepository(
 
     suspend fun cancelTransactionPayment(transactionId: Long) = database.withTransaction {
         val tx = transactionDao.getTransactionById(transactionId) ?: return@withTransaction
-        if (tx.paymentStatus == PaymentStatus.CANCELLED) return@withTransaction
+        if (tx.paymentStatus == PaymentStatus.CANCELLED || tx.debtId != null) return@withTransaction
         // Cancelling a transaction that was already paid must give its money back.
         applyBalanceEffect(tx, -1)
         transactionDao.updateTransaction(tx.copy(paymentStatus = PaymentStatus.CANCELLED))
@@ -189,6 +193,16 @@ class FinanceRepository(
     suspend fun deleteTransaction(transaction: Transaction) = database.withTransaction {
         // Re-read so a stale UI copy can't revert the wrong amount or status.
         val tx = transactionDao.getTransactionById(transaction.id) ?: return@withTransaction
+        val debt = tx.debtId?.let { debtDao.getDebtById(it) }
+        if (debt != null) {
+            if (isDebtOrigin(tx, debt)) {
+                // Removing the money movement of the loan itself keeps the debt, now as "not booked to an account".
+                debtDao.updateDebt(debt.copy(accountId = null))
+            } else {
+                val remaining = (debt.remainingAmount + tx.amount).coerceAtMost(debt.initialAmount)
+                debtDao.updateDebtRemaining(debt.id, remaining, remaining <= 0.001)
+            }
+        }
         applyBalanceEffect(tx, -1)
         transactionDao.deleteTransaction(tx)
     }
@@ -265,37 +279,72 @@ class FinanceRepository(
 
     suspend fun deleteBudget(id: Long) = budgetDao.deleteBudgetById(id)
 
-    suspend fun insertDebt(debt: Debt): Long = debtDao.insertDebt(debt)
+    /**
+     * The money movement that created the loan goes the opposite way to its repayments:
+     * borrowing brings money in (repaying takes it out), lending takes money out (collecting brings it in).
+     */
+    private fun isDebtOrigin(tx: Transaction, debt: Debt): Boolean =
+        if (debt.type == DebtType.I_OWE) tx.type == TransactionType.INCOME else tx.type == TransactionType.EXPENSE
 
-    suspend fun recordDebtPayment(debt: Debt, paymentAmount: Double, accountId: Long) = database.withTransaction {
-        val current = debtDao.getDebtById(debt.id) ?: debt
-        val newRemaining = (current.remainingAmount - paymentAmount).coerceAtLeast(0.0)
-        val isSettled = newRemaining <= 0.001
-        debtDao.updateDebtRemaining(debt.id, newRemaining, isSettled)
+    fun transactionsForDebt(debtId: Long): Flow<List<Transaction>> = transactionDao.getTransactionsForDebt(debtId)
 
-        if (debt.type == DebtType.OWED_TO_ME) {
-            // Someone paid me -> Income to account
-            addTransaction(
-                Transaction(
-                    type = TransactionType.INCOME,
-                    amount = paymentAmount,
-                    sourceAccountId = accountId,
-                    note = "${debt.personName} trả tiền nợ",
-                    timestamp = System.currentTimeMillis()
-                )
+    /** Saves a debt (and, when booked to an account, the money movement). Returns -1 and saves nothing when invalid. */
+    suspend fun insertDebt(debt: Debt): Long = database.withTransaction {
+        val valid = debt.id == 0L && debt.personName.isNotBlank() && debt.initialAmount.isFinite() && debt.initialAmount > 0 &&
+            debt.remainingAmount.isFinite() && debt.remainingAmount in 0.0..debt.initialAmount &&
+            (debt.accountId == null || debt.remainingAmount == debt.initialAmount) &&
+            (debt.accountId == null || accountDao.getAccountById(debt.accountId) != null)
+        if (!valid) return@withTransaction -1L
+        val id = debtDao.insertDebt(debt)
+        debt.accountId?.let { accountId ->
+            val tx = Transaction(
+                type = if (debt.type == DebtType.I_OWE) TransactionType.INCOME else TransactionType.EXPENSE,
+                amount = debt.initialAmount,
+                sourceAccountId = accountId,
+                debtId = id,
+                note = "DEBT_ORIGIN:${debt.personName}",
+                timestamp = debt.createdAt
             )
-        } else {
-            // I paid someone -> Expense from account
-            addTransaction(
-                Transaction(
-                    type = TransactionType.EXPENSE,
-                    amount = paymentAmount,
-                    sourceAccountId = accountId,
-                    note = "Trả nợ cho ${debt.personName}",
-                    timestamp = System.currentTimeMillis()
-                )
-            )
+            applyBalanceEffect(tx, 1)
+            transactionDao.insertTransaction(tx)
         }
+        id
+    }
+
+    suspend fun updateDebt(debt: Debt): Boolean = database.withTransaction {
+        val old = debtDao.getDebtById(debt.id) ?: return@withTransaction false
+        if (old.initialAmount != debt.initialAmount || old.remainingAmount != debt.remainingAmount || old.type != debt.type || old.accountId != debt.accountId) return@withTransaction false
+        debtDao.updateDebt(debt)
+        true
+    }
+
+    suspend fun deleteDebt(debtId: Long): Boolean = database.withTransaction {
+        val debt = debtDao.getDebtById(debtId) ?: return@withTransaction false
+        transactionDao.getTransactionsForDebtOnce(debtId).forEach { tx ->
+            applyBalanceEffect(tx, -1)
+            transactionDao.deleteTransaction(tx)
+        }
+        debtDao.deleteDebt(debt)
+        true
+    }
+
+    /** Records a repayment; returns false (nothing saved) when the amount or account is invalid. */
+    suspend fun recordDebtPayment(debt: Debt, paymentAmount: Double, accountId: Long, timestamp: Long = System.currentTimeMillis()): Boolean = database.withTransaction {
+        val current = debtDao.getDebtById(debt.id) ?: return@withTransaction false
+        if (!paymentAmount.isFinite() || paymentAmount <= 0 || paymentAmount > current.remainingAmount + 0.001 || accountDao.getAccountById(accountId) == null) return@withTransaction false
+        val remaining = (current.remainingAmount - paymentAmount).coerceAtLeast(0.0)
+        debtDao.updateDebtRemaining(current.id, remaining, remaining <= 0.001)
+        val tx = Transaction(
+            type = if (current.type == DebtType.I_OWE) TransactionType.EXPENSE else TransactionType.INCOME,
+            amount = paymentAmount,
+            sourceAccountId = accountId,
+            debtId = current.id,
+            note = "DEBT_PAYMENT:${current.personName}",
+            timestamp = timestamp
+        )
+        applyBalanceEffect(tx, 1)
+        transactionDao.insertTransaction(tx)
+        true
     }
 
     suspend fun insertGoal(goal: Goal): Long = goalDao.insertGoal(goal)

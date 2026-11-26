@@ -24,6 +24,41 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DatabaseMigrationTest {
 
+    @Test fun migration9To10KeepsExistingRows() {
+        val file = context.getDatabasePath("debt_migration_test.db")
+        file.parentFile?.mkdirs()
+        file.delete()
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { raw ->
+            raw.execSQL("CREATE TABLE transactions (id INTEGER PRIMARY KEY, amount REAL NOT NULL)")
+            raw.execSQL("CREATE TABLE debts (id INTEGER PRIMARY KEY, remainingAmount REAL NOT NULL)")
+            raw.execSQL("INSERT INTO transactions VALUES (7, 125.0)")
+            raw.execSQL("INSERT INTO debts VALUES (3, 500.0)")
+        }
+        val helper = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name("debt_migration_test.db")
+                .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(1) {
+                    override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {}
+                    override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+                }).build()
+        )
+        helper.use {
+            val db = it.writableDatabase
+            AppDatabase.MIGRATION_9_10.migrate(db)
+            db.query("SELECT amount, debtId FROM transactions WHERE id=7").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(125.0, cursor.getDouble(0), 0.001)
+                assertTrue(cursor.isNull(1))
+            }
+            db.query("SELECT remainingAmount, accountId FROM debts WHERE id=3").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(500.0, cursor.getDouble(0), 0.001)
+                assertTrue(cursor.isNull(1))
+            }
+        }
+        file.delete()
+    }
+
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
     private fun createV4Database() {

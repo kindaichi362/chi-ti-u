@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import android.app.Application
 import android.graphics.Bitmap
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -96,6 +97,8 @@ class ScreenshotTest {
         repo.upsertBudget(c("Xăng xe"), 800_000.0, month)
         repo.insertBill(RecurringBill(name = "Internet FPT", amount = 250_000.0, accountId = vcb, categoryId = c("Internet"), dayOfMonth = 25, nextDueDate = daysAgo(-2)))
         repo.insertDebt(Debt(type = DebtType.OWED_TO_ME, personName = "Anh Tuấn", initialAmount = 3_000_000.0, remainingAmount = 2_000_000.0))
+        val loan = repo.insertDebt(Debt(type = DebtType.I_OWE, personName = "Chị Lan", initialAmount = 5_000_000.0, remainingAmount = 5_000_000.0, accountId = vcb, dueDate = daysAgo(-3)))
+        repo.recordDebtPayment(repo.allDebts.first().first { it.id == loan }, 1_500_000.0, vcb)
     }
 
     private fun shoot(name: String, vm: FinanceViewModel, start: MainDestination, dark: Boolean = false, accountId: Long? = null) {
@@ -197,11 +200,42 @@ class ScreenshotTest {
         File(outDir, "reports_calendar.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
     @Test fun accounts() = run(MainDestination.ACCOUNTS)
+    @Test fun debtsScreen() = run(MainDestination.DEBTS)
     @Test fun assistant() = run(MainDestination.AI_ASSISTANT)
     @Test fun add() = run(MainDestination.ADD_TRANSACTION)
     @Test fun categories() = run(MainDestination.CATEGORIES)
     @Test @Config(qualifiers = "w360dp-h780dp-xxhdpi") fun categoriesNarrow() = run(MainDestination.CATEGORIES, "_360")
     @Test fun plans() = run(MainDestination.PLANS)
+    @Test fun plansDebts() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        AppDatabase.resetForTests()
+        app.deleteDatabase("chi_tieu_thanh_phat_db")
+        val vm = FinanceViewModel(app)
+        seed(vm)
+        shoot("plans_debts", vm, MainDestination.PLANS)
+    }
+
+    /** The add-debt dialog with an account picked, drawn on its own (dialogs live in a separate window). */
+    @Test fun addDebtDialog() {
+        val accounts = listOf(
+            Account(id = 1, name = "Vietcombank", type = AccountType.BANK, balance = 12_500_000.0),
+            Account(id = 2, name = "Tiền mặt", type = AccountType.CASH, balance = 850_000.0)
+        )
+        compose.setContent {
+            ChiTieuThanhPhatTheme(darkTheme = false) {
+                androidx.compose.foundation.layout.Box(
+                    androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x99000000)),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) { com.example.ui.screens.AddDebtDialog(accounts, onDismiss = {}, inline = true, onSave = {}) }
+            }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        val root = compose.activity.window.decorView
+        val bmp = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+        compose.runOnUiThread { root.draw(android.graphics.Canvas(bmp)) }
+        File(outDir, "add_debt_dialog.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
 
     // Tall renders show the whole scrolling page in one image.
     @Test @Config(qualifiers = "w393dp-h2000dp-xxhdpi") fun dashboardFull() = run(MainDestination.DASHBOARD, "_full")

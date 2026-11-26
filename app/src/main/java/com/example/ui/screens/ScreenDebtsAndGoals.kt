@@ -49,6 +49,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -66,6 +67,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Account
+import com.example.data.model.AccountType
 import com.example.data.model.CategoryType
 import com.example.data.model.Debt
 import com.example.data.model.DebtType
@@ -100,27 +102,46 @@ private fun AccountChips(accounts: List<Account>, selectedId: Long?, onSelect: (
     }
 }
 
+private val DEBT_TRACKING_TYPES = setOf(AccountType.RECEIVABLE, AccountType.PAYABLE, AccountType.LOAN)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScreenDebtsAndGoals(
     viewModel: FinanceViewModel,
     onNavigateBack: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Bottom-bar "Vay nợ" tab: only the debt list, no goals or bills. */
+    debtsOnly: Boolean = false,
+    /** Opens the add-debt dialog right away with this type (dashboard quick buttons). */
+    startAddDebt: DebtType? = null,
+    onStartAddDebtConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val debts by viewModel.debts.collectAsState()
     val goals by viewModel.goals.collectAsState()
     val bills by viewModel.bills.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
+    // Loan money really moves in or out of a wallet/bank; tracking-only accounts would hide it.
+    val moneyAccounts = remember(accounts) { accounts.filter { it.type !in DEBT_TRACKING_TYPES } }
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
     // Dialogs
     var showAddDebtDialog by remember { mutableStateOf(false) }
+    var addDebtType by remember { mutableStateOf(DebtType.I_OWE) }
+    LaunchedEffect(startAddDebt) {
+        if (startAddDebt != null) {
+            selectedTabIndex = 0
+            addDebtType = startAddDebt
+            showAddDebtDialog = true
+            onStartAddDebtConsumed()
+        }
+    }
     var showAddGoalDialog by remember { mutableStateOf(false) }
     var showAddBillDialog by remember { mutableStateOf(false) }
     val categories by viewModel.categories.collectAsState()
     var payingDebt by remember { mutableStateOf<Debt?>(null) }
+    var selectedDebt by remember { mutableStateOf<Debt?>(null) }
     var depositingGoal by remember { mutableStateOf<Goal?>(null) }
     var paymentAmountInput by remember { mutableStateOf("") }
     var selectedAccountForAction by remember { mutableStateOf<Long?>(null) }
@@ -129,114 +150,27 @@ fun ScreenDebtsAndGoals(
         selectedAccountForAction = accounts.first().id
     }
 
-    // Add Debt Dialog
+    selectedDebt?.let { picked ->
+        // Follow the live row so the dialog shows payments as soon as they are saved.
+        val debt = debts.firstOrNull { it.id == picked.id }
+        if (debt == null) selectedDebt = null else {
+            val history by viewModel.transactionsForDebt(debt.id).collectAsState(initial = emptyList())
+            DebtDetailDialog(
+                debt = debt, history = history, accounts = accounts,
+                onDismiss = { selectedDebt = null },
+                onPay = { payingDebt = debt },
+                onUpdate = { viewModel.updateDebt(it) },
+                onDelete = { viewModel.deleteDebt(debt.id); selectedDebt = null; Toast.makeText(context, "Đã xóa khoản nợ", Toast.LENGTH_SHORT).show() }
+            )
+        }
+    }
+
     if (showAddDebtDialog) {
-        var debtType by remember { mutableStateOf(DebtType.OWED_TO_ME) }
-        var personName by remember { mutableStateOf("") }
-        var debtAmount by remember { mutableStateOf("") }
-        var debtNote by remember { mutableStateOf("") }
-
-        AlertDialog(
-            onDismissRequest = { showAddDebtDialog = false },
-            title = { Text("Thêm khoản nợ mới", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (debtType == DebtType.OWED_TO_ME) IncomeGreen.copy(alpha = 0.2f) else Color.LightGray.copy(alpha = 0.3f),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { debtType = DebtType.OWED_TO_ME }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "Người khác nợ tôi",
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                fontSize = 12.sp,
-                                fontWeight = if (debtType == DebtType.OWED_TO_ME) FontWeight.Bold else FontWeight.Normal,
-                                color = if (debtType == DebtType.OWED_TO_ME) IncomeGreen else Color.DarkGray,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (debtType == DebtType.I_OWE) ExpenseRed.copy(alpha = 0.2f) else Color.LightGray.copy(alpha = 0.3f),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { debtType = DebtType.I_OWE }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "Tôi nợ người khác",
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                fontSize = 12.sp,
-                                fontWeight = if (debtType == DebtType.I_OWE) FontWeight.Bold else FontWeight.Normal,
-                                color = if (debtType == DebtType.I_OWE) ExpenseRed else Color.DarkGray,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = personName,
-                        onValueChange = { personName = it },
-                        label = { Text("Tên người liên quan") },
-                        placeholder = { Text("Ví dụ: Anh Nam, Bạn Hùng...") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = debtAmount,
-                        onValueChange = { debtAmount = it },
-                        label = { Text("Số tiền (VNĐ)") },
-                        placeholder = { Text("Ví dụ: 5000000") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = debtNote,
-                        onValueChange = { debtNote = it },
-                        label = { Text("Ghi chú") },
-                        placeholder = { Text("Lý do vay/mượn") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val amt = parseVndInput(debtAmount)
-                        if (personName.isNotBlank() && amt > 0) {
-                            viewModel.addDebt(
-                                Debt(
-                                    type = debtType,
-                                    personName = personName,
-                                    initialAmount = amt,
-                                    remainingAmount = amt,
-                                    note = debtNote
-                                )
-                            )
-                            showAddDebtDialog = false
-                            Toast.makeText(context, "Đã lưu khoản nợ!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Vui lòng nhập đầy đủ thông tin", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                ) {
-                    Text("Lưu")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDebtDialog = false }) {
-                    Text("Hủy")
-                }
-            }
-        )
+        AddDebtDialog(moneyAccounts, onDismiss = { showAddDebtDialog = false }, initialType = addDebtType) { debt ->
+            viewModel.addDebt(debt)
+            showAddDebtDialog = false
+            Toast.makeText(context, "Đã lưu khoản ${if (debt.type == DebtType.I_OWE) "vay" else "cho vay"}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // Add Recurring Bill Dialog
@@ -396,58 +330,13 @@ fun ScreenDebtsAndGoals(
         )
     }
 
-    // Pay Debt Dialog
-    if (payingDebt != null) {
-        val debt = payingDebt!!
-        AlertDialog(
-            onDismissRequest = { payingDebt = null },
-            title = { Text("Ghi nhận trả nợ: ${debt.personName}") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "Còn nợ: ${formatVnd(debt.remainingAmount)}",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    OutlinedTextField(
-                        value = paymentAmountInput,
-                        onValueChange = { paymentAmountInput = it },
-                        label = { Text("Số tiền thanh toán lần này") },
-                        placeholder = { Text("Ví dụ: 1000000") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text(
-                        text = if (debt.type == DebtType.OWED_TO_ME) "Nhận vào tài khoản" else "Trả từ tài khoản",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    AccountChips(accounts, selectedAccountForAction) { selectedAccountForAction = it }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        // Never record more than what is still owed.
-                        val amt = parseVndInput(paymentAmountInput).coerceAtMost(debt.remainingAmount)
-                        val accId = selectedAccountForAction ?: accounts.firstOrNull()?.id
-                        if (amt > 0 && accId != null) {
-                            viewModel.recordDebtPayment(debt, amt, accId)
-                            payingDebt = null
-                            paymentAmountInput = ""
-                            Toast.makeText(context, "Đã ghi nhận thanh toán!", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                ) {
-                    Text("Xác nhận")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { payingDebt = null }) {
-                    Text("Hủy")
-                }
-            }
-        )
+    payingDebt?.let { picked ->
+        val debt = debts.firstOrNull { it.id == picked.id } ?: picked
+        PayDebtDialog(debt, moneyAccounts, onDismiss = { payingDebt = null }) { amount, accountId, ts ->
+            viewModel.recordDebtPayment(debt, amount, accountId, ts)
+            payingDebt = null
+            Toast.makeText(context, "Đã ghi ${formatVnd(amount)}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // Deposit to Goal Dialog
@@ -519,7 +408,7 @@ fun ScreenDebtsAndGoals(
                     }
                 }
                 Text(
-                    text = "Vay nợ & kế hoạch",
+                    text = if (debtsOnly) "Vay nợ" else "Vay nợ & kế hoạch",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -528,7 +417,7 @@ fun ScreenDebtsAndGoals(
             Button(
                 onClick = {
                     when (selectedTabIndex) {
-                        0 -> showAddDebtDialog = true
+                        0 -> { addDebtType = DebtType.I_OWE; showAddDebtDialog = true }
                         1 -> showAddGoalDialog = true
                         else -> showAddBillDialog = true
                     }
@@ -540,9 +429,9 @@ fun ScreenDebtsAndGoals(
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = when (selectedTabIndex) {
-                        0 -> "+ Khoản nợ"
-                        1 -> "+ Mục tiêu"
-                        else -> "+ Hóa đơn"
+                        0 -> "Khoản nợ"
+                        1 -> "Mục tiêu"
+                        else -> "Hóa đơn"
                     },
                     fontSize = 13.sp
                 )
@@ -552,7 +441,7 @@ fun ScreenDebtsAndGoals(
         Spacer(modifier = Modifier.height(12.dp))
 
         // Tabs: Sổ Nợ (Debts) | Mục tiêu (Goals) | Hóa đơn (Bills)
-        TabRow(
+        if (!debtsOnly) TabRow(
             selectedTabIndex = selectedTabIndex,
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
             modifier = Modifier.clip(RoundedCornerShape(12.dp))
@@ -574,114 +463,11 @@ fun ScreenDebtsAndGoals(
             )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        if (!debtsOnly) Spacer(modifier = Modifier.height(14.dp))
 
         // Content for each tab
         when (selectedTabIndex) {
-            0 -> { // SỔ NỢ
-                val totalOwedToMe = debts.filter { it.type == DebtType.OWED_TO_ME && !it.isSettled }.sumOf { it.remainingAmount }
-                val totalIOwe = debts.filter { it.type == DebtType.I_OWE && !it.isSettled }.sumOf { it.remainingAmount }
-
-                // Net debt banner
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(text = "Người khác nợ tôi", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(text = formatVnd(totalOwedToMe), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = IncomeGreen)
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(text = "Tôi nợ người khác", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(text = formatVnd(totalIOwe), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ExpenseRed)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (debts.isEmpty()) {
-                    Text(
-                        text = "Chưa có khoản nợ nào được ghi nhận.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 90.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(debts) { debt ->
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Person,
-                                        contentDescription = null,
-                                        tint = if (debt.type == DebtType.OWED_TO_ME) IncomeGreen else ExpenseRed,
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(text = debt.personName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text(
-                                            text = if (debt.type == DebtType.OWED_TO_ME) "Nợ tôi: ${formatVnd(debt.remainingAmount)}" else "Tôi nợ: ${formatVnd(debt.remainingAmount)}",
-                                            fontSize = 12.sp,
-                                            color = if (debt.type == DebtType.OWED_TO_ME) IncomeGreen else ExpenseRed,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        if (debt.note.isNotBlank()) {
-                                            Text(text = debt.note, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-
-                                    if (!debt.isSettled) {
-                                        Button(
-                                            onClick = { payingDebt = debt },
-                                            shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(32.dp)
-                                        ) {
-                                            Text(if (debt.type == DebtType.OWED_TO_ME) "Thu tiền" else "Trả nợ", fontSize = 11.sp)
-                                        }
-                                    } else {
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = IncomeGreen.copy(alpha = 0.15f)
-                                        ) {
-                                            Text(
-                                                text = "Đã tất toán",
-                                                color = IncomeGreen,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            0 -> DebtTab(debts, onOpen = { selectedDebt = it }, onPay = { payingDebt = it })
 
             1 -> { // MỤC TIÊU TÀI CHÍNH (GOALS)
                 if (goals.isEmpty()) {

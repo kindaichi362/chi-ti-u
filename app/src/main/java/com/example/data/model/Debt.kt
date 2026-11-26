@@ -20,5 +20,6 @@ data class Debt(
     val dueDate: Long? = null,
     val note: String = "",
     val isSettled: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val accountId: Long? = null
 )
