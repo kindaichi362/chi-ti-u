@@ -32,7 +32,7 @@ import com.example.dragon.data.DragonPet
         DragonPet::class,
         DragonLedgerEntry::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -123,6 +123,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE transactions ADD COLUMN debtId INTEGER DEFAULT NULL")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_debtId ON transactions (debtId)")
+                db.execSQL("ALTER TABLE debts ADD COLUMN accountId INTEGER DEFAULT NULL")
+            }
+        }
+
         /** Tests only: forget the open instance so the next call opens a fresh database file. */
         fun resetForTests() {
             synchronized(this) { INSTANCE?.close(); INSTANCE = null }
@@ -137,7 +145,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "chi_tieu_thanh_phat_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, CategoryCleanupMigration, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, CategoryCleanupMigration, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .build()
                 INSTANCE = instance
                 instance

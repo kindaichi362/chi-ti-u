@@ -382,9 +382,15 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun recordDebtPayment(debt: Debt, amount: Double, accountId: Long) {
+    fun transactionsForDebt(debtId: Long) = repository.transactionsForDebt(debtId)
+
+    fun updateDebt(debt: Debt) { viewModelScope.launch { repository.updateDebt(debt) } }
+
+    fun deleteDebt(debtId: Long) { viewModelScope.launch { repository.deleteDebt(debtId) } }
+
+    fun recordDebtPayment(debt: Debt, amount: Double, accountId: Long, timestamp: Long = System.currentTimeMillis()) {
         viewModelScope.launch {
-            repository.recordDebtPayment(debt, amount, accountId)
+            repository.recordDebtPayment(debt, amount, accountId, timestamp)
         }
     }
 

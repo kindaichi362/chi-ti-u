@@ -157,7 +157,8 @@ fun ScreenAccountDetail(
     }
 
     val monthKey = FinanceViewModel.monthKeyOf(System.currentTimeMillis())
-    val thisMonth = history.filter { it.countsInReports && FinanceViewModel.monthKeyOf(it.timestamp) == monthKey }
+    // Money in/out of this account includes loans and repayments, which reports leave out.
+    val thisMonth = history.filter { it.paymentStatus == com.example.data.model.PaymentStatus.PAID && FinanceViewModel.monthKeyOf(it.timestamp) == monthKey }
     // Money in / out of THIS account this month, transfers included (they move this balance).
     val moneyIn = thisMonth.filter { it.type == TransactionType.INCOME || (it.type == TransactionType.TRANSFER && it.destinationAccountId == account.id) }.sumOf { it.amount }
     val moneyOut = thisMonth.filter { it.type == TransactionType.EXPENSE || (it.type == TransactionType.TRANSFER && it.sourceAccountId == account.id) }.sumOf { it.amount }

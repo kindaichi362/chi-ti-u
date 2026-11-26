@@ -20,7 +20,7 @@ enum class PaymentStatus(val displayName: String) {
 
 @Entity(
     tableName = "transactions",
-    indices = [Index("timestamp"), Index("sourceAccountId"), Index("destinationAccountId"), Index("categoryId")]
+    indices = [Index("timestamp"), Index("sourceAccountId"), Index("destinationAccountId"), Index("categoryId"), Index("debtId")]
 )
 data class Transaction(
     @PrimaryKey(autoGenerate = true)
@@ -38,7 +38,8 @@ data class Transaction(
     val qrBankBin: String? = null,
     val qrAccountNumber: String? = null,
     val qrBeneficiaryName: String? = null,
-    val qrContent: String? = null
+    val qrContent: String? = null,
+    val debtId: Long? = null
 ) {
     @get:Ignore
     val date: Long get() = timestamp
@@ -49,4 +50,6 @@ data class Transaction(
  * pending or cancelled QR payments are excluded.
  */
 val Transaction.countsInReports: Boolean
-    get() = paymentStatus == PaymentStatus.PAID
+    get() = paymentStatus == PaymentStatus.PAID && debtId == null
+
+val Transaction.isDebtPrincipal: Boolean get() = debtId != null

@@ -518,14 +518,25 @@ fun TransactionRow(
     onClick: (() -> Unit)? = null
 ) {
     val p = AppPalette
-    val title = when (tx.type) {
+    val title = when {
+        tx.debtId != null -> {
+            val person = tx.note.substringAfter(':', "")
+            when {
+                tx.note.startsWith("DEBT_ORIGIN:") && tx.type == TransactionType.INCOME -> "Vay của $person"
+                tx.note.startsWith("DEBT_ORIGIN:") -> "Cho $person vay"
+                tx.type == TransactionType.INCOME -> "$person trả nợ"
+                else -> "Trả nợ $person"
+            }
+        }
+        else -> when (tx.type) {
         TransactionType.TRANSFER -> if (destination != null) "${account?.name ?: "?"} → ${destination.name}" else tx.note.ifBlank { "Chuyển tiền" }
         TransactionType.ADJUSTMENT -> "Đối soát số dư"
         else -> category?.name ?: tx.note.ifBlank { "Chưa phân loại" }
+        }
     }
     val time = SimpleDateFormat(if (showDate && !isToday(tx.timestamp)) "dd/MM/yyyy · HH:mm" else "HH:mm", Locale.getDefault()).format(Date(tx.timestamp))
     // Adjustments carry an automatic reason as note; it adds nothing next to the title.
-    val note = tx.note.takeIf { it.isNotBlank() && it != title && tx.type != TransactionType.TRANSFER && tx.type != TransactionType.ADJUSTMENT }
+    val note = tx.note.takeIf { tx.debtId == null && it.isNotBlank() && it != title && tx.type != TransactionType.TRANSFER && tx.type != TransactionType.ADJUSTMENT }
     val subtitle = listOfNotNull(time, account?.name?.takeIf { tx.type != TransactionType.TRANSFER }, note).joinToString(" · ")
     val cancelled = tx.paymentStatus == PaymentStatus.CANCELLED
 

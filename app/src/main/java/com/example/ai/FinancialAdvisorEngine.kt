@@ -49,6 +49,8 @@ data class FinancialSnapshot(
     val totalAssets: Double,
     val totalLiabilities: Double,
     val netWorth: Double,
+    /** Money other people still owe me (unsettled "cho vay"). */
+    val receivables: Double = 0.0,
     val monthlyIncome: Double,
     val monthlyExpense: Double,
     val monthlySavings: Double,
@@ -119,6 +121,8 @@ object FinancialAdvisorEngine {
         val totalAssets = accounts.filter { it.balance > 0 && !it.isExcludedFromNetWorth }.sumOf { it.balance }
         val totalLiabilities = abs(accounts.filter { it.balance < 0 && !it.isExcludedFromNetWorth }.sumOf { it.balance }) +
             debts.filter { it.type == DebtType.I_OWE && !it.isSettled }.sumOf { it.remainingAmount }
+        // Money lent out is still mine: lending must not shrink net worth.
+        val receivables = debts.filter { it.type == DebtType.OWED_TO_ME && !it.isSettled }.sumOf { it.remainingAmount }
 
         val cal = Calendar.getInstance().apply { timeInMillis = now }
         val thisStart = monthStart(cal).timeInMillis
@@ -167,7 +171,8 @@ object FinancialAdvisorEngine {
         return FinancialSnapshot(
             totalAssets = totalAssets,
             totalLiabilities = totalLiabilities,
-            netWorth = totalAssets - totalLiabilities,
+            netWorth = totalAssets + receivables - totalLiabilities,
+            receivables = receivables,
             monthlyIncome = monthlyIncome,
             monthlyExpense = monthlyExpense,
             monthlySavings = monthlySavings,
@@ -354,7 +359,9 @@ object FinancialAdvisorEngine {
     }
 
     private fun netWorthReport(s: FinancialSnapshot): String =
-        "💎 **Tài sản ròng: ${formatVnd(s.netWorth)}**\n• Tài sản: ${formatVnd(s.totalAssets)}\n• Nợ (gồm thẻ tín dụng ${compact(s.creditCardDebt)}): ${formatVnd(s.totalLiabilities)}"
+        "💎 **Tài sản ròng: ${formatVnd(s.netWorth)}**\n• Tài sản: ${formatVnd(s.totalAssets)}\n" +
+            (if (s.receivables > 0) "• Cho vay chưa thu: ${formatVnd(s.receivables)}\n" else "") +
+            "• Nợ (gồm thẻ tín dụng ${compact(s.creditCardDebt)}): ${formatVnd(s.totalLiabilities)}"
 
     private fun creditCardReport(s: FinancialSnapshot): String {
         if (s.creditCards.isEmpty()) return "Bạn chưa thêm thẻ tín dụng nào. Vào Tài khoản › Thêm › Thẻ tín dụng, nhập hạn mức và ngày đến hạn để mình nhắc trả thẻ và theo dõi hạn mức."

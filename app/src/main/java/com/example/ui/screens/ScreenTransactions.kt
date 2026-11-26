@@ -126,7 +126,7 @@ fun ScreenTransactions(
             val range = filter.monthOffset?.let(::monthRange)
             transactions.filter { tx ->
                 (range == null || tx.timestamp in range) &&
-                    (!filter.settledOnly || tx.countsInReports) &&
+                    (!filter.settledOnly || tx.paymentStatus == com.example.data.model.PaymentStatus.PAID) &&
                     (filter.type == null || tx.type == filter.type) &&
                     (filter.accountId == null || tx.sourceAccountId == filter.accountId || tx.destinationAccountId == filter.accountId) &&
                     (filter.query.isBlank() || listOfNotNull(tx.note, categoryById[tx.categoryId]?.name, accountById[tx.sourceAccountId]?.name)
@@ -149,7 +149,7 @@ fun ScreenTransactions(
         }
     }
 
-    editing?.let { tx ->
+    editing?.takeIf { it.debtId == null }?.let { tx ->
         EditTransactionDialog(
             transaction = tx,
             accounts = accounts,
@@ -164,7 +164,7 @@ fun ScreenTransactions(
             onDismissRequest = { deleting = null },
             containerColor = p.card,
             title = { Text("Xóa giao dịch?", fontWeight = FontWeight.Bold, color = p.textPrimary) },
-            text = { Text("Số dư tài khoản liên quan sẽ được hoàn lại tương ứng.", color = p.textSecondary) },
+            text = { Text(if (tx.debtId != null) "Đây là giao dịch của một khoản vay nợ. Số dư tài khoản được hoàn lại; nếu là lần trả/thu nợ thì số còn nợ được cộng lại. Muốn sửa, vào Vay nợ & kế hoạch." else "Số dư tài khoản liên quan sẽ được hoàn lại tương ứng.", color = p.textSecondary) },
             confirmButton = { TextButton(onClick = { viewModel.deleteTransaction(tx); deleting = null }) { Text("Xóa", color = p.danger, fontWeight = FontWeight.SemiBold) } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Hủy", color = p.textSecondary) } }
         )
@@ -377,7 +377,7 @@ fun ScreenTransactions(
                                 category = categoryById[tx.categoryId],
                                 account = accountById[tx.sourceAccountId],
                                 destination = tx.destinationAccountId?.let { accountById[it] },
-                                onClick = { if (tx.type == com.example.data.model.TransactionType.ADJUSTMENT) deleting = tx else editing = tx }
+                                onClick = { if (tx.debtId != null || tx.type == com.example.data.model.TransactionType.ADJUSTMENT) deleting = tx else editing = tx }
                             )
                         }
                     }

@@ -62,6 +62,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.data.model.DebtType
 import com.example.data.model.TransactionType
 import com.example.data.backup.NightlyBackupScheduler
 import com.example.data.backup.VpsProvision
@@ -92,6 +93,7 @@ import kotlinx.coroutines.launch
 enum class MainDestination(val label: String, val icon: ImageVector?, val tag: String) {
     DASHBOARD("Tổng quan", Icons.Outlined.Home, "tab_dashboard"),
     TRANSACTIONS("Giao dịch", Icons.AutoMirrored.Outlined.ReceiptLong, "tab_transactions"),
+    DEBTS("Vay nợ", null, "tab_debts"),
     REPORTS("Báo cáo", Icons.Outlined.PieChart, "tab_reports"),
     ACCOUNTS("Tài khoản", Icons.Outlined.AccountBalanceWallet, "tab_accounts"),
     ADD_TRANSACTION("Thêm", null, "tab_add"),
@@ -180,6 +182,9 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
     var addType by remember { mutableStateOf(TransactionType.EXPENSE) }
     var addSourceAccountId by remember { mutableStateOf<Long?>(null) }
 
+    // Set by the dashboard's "Vay tiền" / "Cho vay" buttons; the debt screen opens its add dialog once.
+    var startAddDebt by remember { mutableStateOf<DebtType?>(null) }
+
     fun navigateTo(dest: MainDestination) {
         when {
             dest == MainDestination.DASHBOARD -> { backStack.clear(); backStack.add(MainDestination.DASHBOARD) }
@@ -251,6 +256,7 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
                     onNavigateToBudgets = { reportsTab = 2; navigateTo(MainDestination.REPORTS) },
                     onNavigateToAiAssistant = { q -> pendingQuestion = q; navigateTo(MainDestination.AI_ASSISTANT) },
                     onNavigateToPlans = { navigateTo(MainDestination.PLANS) },
+                    onNavigateToDebts = { type -> startAddDebt = type; navigateTo(MainDestination.DEBTS) },
                     dragonCard = { DragonCard(dragonState, onOpen = { navigateTo(MainDestination.DRAGON_WORLD) }) },
                     modifier = content
                 )
@@ -299,6 +305,14 @@ fun MainAppScreen(viewModel: FinanceViewModel, startDestination: MainDestination
                     initialQuestion = pendingQuestion,
                     onInitialQuestionConsumed = { pendingQuestion = null },
                     onNavigateBack = { navigateBack() }
+                )
+                MainDestination.DEBTS -> ScreenDebtsAndGoals(
+                    viewModel = viewModel,
+                    onNavigateBack = { navigateBack() },
+                    modifier = content,
+                    debtsOnly = true,
+                    startAddDebt = startAddDebt,
+                    onStartAddDebtConsumed = { startAddDebt = null }
                 )
                 MainDestination.PLANS -> ScreenDebtsAndGoals(
                     viewModel = viewModel,
